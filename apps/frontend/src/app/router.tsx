@@ -5,6 +5,7 @@ import { SignInPage } from "@/pages/sign-in";
 import { SignUpPage } from "@/pages/sign-up";
 import { NotFoundPage } from "@/pages/not-found";
 import { CategoriesPage } from "@/features/categories/categories-page";
+import { TransactionsPage } from "@/features/transactions/transactions-page";
 
 export const router = createBrowserRouter([
   {
@@ -30,6 +31,10 @@ export const router = createBrowserRouter([
       {
         path: "categories",
         element: <CategoriesPage />,
+      },
+      {
+        path: "transactions",
+        element: <TransactionsPage />,
       },
     ],
   },
