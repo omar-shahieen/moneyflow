@@ -30,6 +30,7 @@ type Handlers struct {
 	Recurring    *handler.RecurringRuleHandler
 	Receipt      *handler.ReceiptHandler
 	Import       *handler.ImportHandler
+	Report       *handler.ReportHandler
 }
 
 type Services struct {
@@ -137,6 +138,13 @@ func (r *GinRouter) registerDomainRoutes() {
 		imports := v1.Group("/imports")
 		imports.POST("", r.handlers.Import.Create)
 		imports.GET("/:id", r.handlers.Import.GetByID)
+	}
+
+	if r.handlers.Report != nil {
+		reports := v1.Group("/reports")
+		reports.GET("", r.handlers.Report.List)
+		reports.GET("/:id", r.handlers.Report.GetByID)
+		reports.POST("", r.handlers.Report.Create)
 	}
 }
 
