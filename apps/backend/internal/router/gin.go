@@ -27,6 +27,7 @@ type Handlers struct {
 	Transaction  *handler.TransactionHandler
 	Budget       *handler.BudgetHandler
 	Subscription *handler.SubscriptionHandler
+	Recurring    *handler.RecurringRuleHandler
 }
 
 type Services struct {
@@ -114,6 +115,15 @@ func (r *GinRouter) registerDomainRoutes() {
 	if r.handlers.Subscription != nil {
 		subscription := v1.Group("/subscription")
 		subscription.GET("", r.handlers.Subscription.Get)
+	}
+
+	if r.handlers.Recurring != nil {
+		recurring := v1.Group("/recurring-rules")
+		recurring.GET("", r.handlers.Recurring.List)
+		recurring.GET("/:id", r.handlers.Recurring.GetByID)
+		recurring.POST("", r.handlers.Recurring.Create)
+		recurring.PATCH("/:id", r.handlers.Recurring.Update)
+		recurring.DELETE("/:id", r.handlers.Recurring.Delete)
 	}
 }
 

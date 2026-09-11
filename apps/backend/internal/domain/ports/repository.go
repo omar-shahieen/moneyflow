@@ -87,6 +87,9 @@ type RecurringRuleRepository interface {
 	Update(ctx context.Context, rule *model.RecurringRule) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
 	GetDueRules(ctx context.Context, before time.Time) ([]model.RecurringRule, error)
+	UpdateNextRunDate(ctx context.Context, ruleID uuid.UUID, nextRun time.Time) error
+	IsOccurrenceGenerated(ctx context.Context, ruleID uuid.UUID, occurrenceDate time.Time) (bool, error)
+	MarkOccurrenceGenerated(ctx context.Context, ruleID uuid.UUID, occurrenceDate time.Time) error
 }
 
 type ReportRepository interface {

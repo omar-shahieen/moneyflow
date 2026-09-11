@@ -49,6 +49,7 @@ func main() {
 	transactionRepo := repository.NewTransactionRepository(db.Pool)
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
 	budgetMemberRepo := repository.NewBudgetMemberRepository(db.Pool)
+	recurringRuleRepo := repository.NewRecurringRuleRepository(db.Pool)
 
 	planGuard := service.NewPlanGuardService(db.Pool)
 
@@ -63,11 +64,15 @@ func main() {
 
 	subscriptionHandler := handler.NewSubscriptionHandler(db.Pool)
 
+	recurringRuleService := service.NewRecurringRuleService(recurringRuleRepo, categoryRepo, transactionRepo, planGuard)
+	recurringRuleHandler := handler.NewRecurringRuleHandler(recurringRuleService)
+
 	r.SetHandlers(&router.Handlers{
 		Category:     categoryHandler,
 		Transaction:  transactionHandler,
 		Budget:       budgetHandler,
 		Subscription: subscriptionHandler,
+		Recurring:    recurringRuleHandler,
 	})
 
 	httpServer := &http.Server{
