@@ -8,15 +8,26 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/omar-shahieen/moneyflow/internal/config"
+	"github.com/omar-shahieen/moneyflow/internal/handler"
 	"github.com/omar-shahieen/moneyflow/internal/middleware"
+	"github.com/omar-shahieen/moneyflow/internal/service"
 	"github.com/rs/zerolog"
 )
 
 type GinRouter struct {
-	engine *gin.Engine
-	config *config.Config
-	db     *pgxpool.Pool
-	logger zerolog.Logger
+	engine   *gin.Engine
+	config   *config.Config
+	db       *pgxpool.Pool
+	logger   zerolog.Logger
+	handlers *Handlers
+}
+
+type Handlers struct {
+	Category *handler.CategoryHandler
+}
+
+type Services struct {
+	Category *service.CategoryService
 }
 
 func NewGinRouter(cfg *config.Config, db *pgxpool.Pool, log zerolog.Logger) *GinRouter {
@@ -41,6 +52,11 @@ func NewGinRouter(cfg *config.Config, db *pgxpool.Pool, log zerolog.Logger) *Gin
 	return r
 }
 
+func (r *GinRouter) SetHandlers(h *Handlers) {
+	r.handlers = h
+	r.registerDomainRoutes()
+}
+
 func (r *GinRouter) setupMiddleware() {
 	r.engine.Use(middleware.RecoveryMiddleware(&r.logger))
 	r.engine.Use(middleware.RequestIDMiddleware())
@@ -54,9 +70,23 @@ func (r *GinRouter) setupMiddleware() {
 func (r *GinRouter) setupRoutes() {
 	r.engine.GET("/health", r.healthCheck)
 	r.engine.GET("/status", r.healthCheck)
+}
+
+func (r *GinRouter) registerDomainRoutes() {
+	if r.handlers == nil {
+		return
+	}
 
 	v1 := r.engine.Group("/api/v1")
-	_ = v1
+
+	if r.handlers.Category != nil {
+		categories := v1.Group("/categories")
+		categories.GET("", r.handlers.Category.List)
+		categories.GET("/:id", r.handlers.Category.GetByID)
+		categories.POST("", r.handlers.Category.Create)
+		categories.PATCH("/:id", r.handlers.Category.Update)
+		categories.DELETE("/:id", r.handlers.Category.Delete)
+	}
 }
 
 func (r *GinRouter) healthCheck(c *gin.Context) {

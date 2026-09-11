@@ -8,11 +8,13 @@ import (
 	"os/signal"
 	"time"
 
-	"github.com/hibiken/asynq"
 	"github.com/omar-shahieen/moneyflow/internal/config"
 	"github.com/omar-shahieen/moneyflow/internal/database"
+	"github.com/omar-shahieen/moneyflow/internal/handler"
 	"github.com/omar-shahieen/moneyflow/internal/logger"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
 	"github.com/omar-shahieen/moneyflow/internal/router"
+	"github.com/omar-shahieen/moneyflow/internal/service"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -40,11 +42,16 @@ func main() {
 	})
 	defer redisClient.Close()
 
-	_ = asynq.NewClient(asynq.RedisClientOpt{
-		Addr: cfg.Redis.Address,
-	})
-
 	r := router.NewGinRouter(cfg, db.Pool, log)
+
+	userRepo := repository.NewUserRepository(db.Pool)
+	categoryRepo := repository.NewCategoryRepository(db.Pool)
+	categoryService := service.NewCategoryService(categoryRepo, userRepo, nil)
+	categoryHandler := handler.NewCategoryHandler(categoryService)
+
+	r.SetHandlers(&router.Handlers{
+		Category: categoryHandler,
+	})
 
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Server.Port,

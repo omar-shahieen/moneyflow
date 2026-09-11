@@ -13,6 +13,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+var (
+	ErrUnauthorized = errors.New("unauthorized")
+	ErrInvalidID    = errors.New("invalid ID")
+)
+
 type GinHandler struct {
 	logger zerolog.Logger
 }
@@ -60,7 +65,31 @@ func RespondNoContent(c *gin.Context) {
 
 func RespondError(c *gin.Context, err error) {
 	logger := middleware.GetLoggerFromGin(c)
-	logger.Error().Err(err).Msg("request error")
+	if logger != nil {
+		logger.Error().Err(err).Msg("request error")
+	}
+
+	if errors.Is(err, ErrUnauthorized) {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{
+			Error: ErrorBody{
+				Code:    "UNAUTHORIZED",
+				Message: "Unauthorized",
+				Status:  http.StatusUnauthorized,
+			},
+		})
+		return
+	}
+
+	if errors.Is(err, ErrInvalidID) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: ErrorBody{
+				Code:    "INVALID_ID",
+				Message: "Invalid ID format",
+				Status:  http.StatusBadRequest,
+			},
+		})
+		return
+	}
 
 	var domainErr *domain.DomainError
 	if errors.As(err, &domainErr) {
