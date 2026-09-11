@@ -82,7 +82,7 @@ export const PLAN_PRICES: Record<PlanType, { monthly: number; yearly: number }> 
 
 export function useSubscription() {
   return useQuery({
-    queryKey: queryKeys.subscription.detail(),
+    queryKey: queryKeys.subscription.current(),
     queryFn: async () => {
       const response = await apiClient.get("/subscription");
       return response.data as Subscription;
