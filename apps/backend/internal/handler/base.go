@@ -1,15 +1,28 @@
 package handler
 
 import (
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/newrelic/go-agent/v3/integrations/nrpkgerrors"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
 	"github.com/omar-shahieen/moneyflow/internal/middleware"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/validation"
 )
+
+func convertFieldErrors(fieldErrors []validation.FieldError) []errs.FieldError {
+	var result []errs.FieldError
+	for _, fe := range fieldErrors {
+		result = append(result, errs.FieldError{
+			Field: fe.Field,
+			Error: fe.Error,
+		})
+	}
+	return result
+}
 
 // Handler provides base functionality for all handlers
 type Handler struct {
@@ -138,20 +151,45 @@ func handleRequest[Req validation.Validatable](
 
 	// Validation with observability
 	validationStart := time.Now()
-	if err := validation.BindAndValidate(c, req); err != nil {
+	if err := c.Bind(req); err != nil {
 		validationDuration := time.Since(validationStart)
-
+		errMsg := err.Error()
+		// Extract message from Echo binding error
+		if parts := strings.Split(errMsg, ","); len(parts) > 1 {
+			if subParts := strings.Split(parts[1], "message="); len(subParts) > 1 {
+				errMsg = subParts[1]
+			}
+		}
+		bindErr := errs.NewBadRequestError(errMsg, false, nil, nil, nil)
 		logger.Error().
-			Err(err).
+			Err(bindErr).
 			Dur("validation_duration", validationDuration).
-			Msg("request validation failed")
-
+			Msg("request binding failed")
 		if txn != nil {
-			txn.NoticeError(nrpkgerrors.Wrap(err))
+			txn.NoticeError(nrpkgerrors.Wrap(bindErr))
 			txn.AddAttribute("validation.status", "failed")
 			txn.AddAttribute("validation.duration_ms", validationDuration.Milliseconds())
 		}
-		return err
+		return bindErr
+	}
+	if msg, fieldErrors := validation.ValidateStruct(req); fieldErrors != nil {
+		validationDuration := time.Since(validationStart)
+		ve := &errs.HTTPError{
+			Code:    "VALIDATION_FAILED",
+			Message: msg,
+			Status:  422,
+			Errors:  convertFieldErrors(fieldErrors),
+		}
+		logger.Error().
+			Err(ve).
+			Dur("validation_duration", validationDuration).
+			Msg("request validation failed")
+		if txn != nil {
+			txn.NoticeError(nrpkgerrors.Wrap(ve))
+			txn.AddAttribute("validation.status", "failed")
+			txn.AddAttribute("validation.duration_ms", validationDuration.Milliseconds())
+		}
+		return ve
 	}
 
 	validationDuration := time.Since(validationStart)
