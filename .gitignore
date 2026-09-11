@@ -42,7 +42,6 @@ out/
 build
 dist
 tmp
-.turbo
 .nx
 
 # Debug

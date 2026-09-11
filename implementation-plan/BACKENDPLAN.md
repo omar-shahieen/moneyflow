@@ -68,7 +68,7 @@ Keep `apps/backend` initially to reduce migration risk. Rename it to `apps/api` 
    - `clean`: remove generated binaries and test artifacts.
 3. Add inputs and outputs so Nx can cache Go builds and tests safely.
 4. Add the backend to `nx affected` and CI.
-5. Keep Turborepo commands until Nx produces equivalent results in CI.
+5. Use Nx commands in local development and CI.
 
 **Exit gate:** `nx run backend:test`, `nx run backend:build`, and `nx affected -t lint test build` work from a clean checkout.
 

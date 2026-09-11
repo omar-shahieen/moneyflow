@@ -22,7 +22,7 @@ moneyflow/
 ├── apps/backend/          # Go backend application
 ├── packages/         # Frontend packages (React, Vue, etc.)
 ├── package.json      # Monorepo configuration
-├── turbo.json        # Turborepo configuration
+├── nx.json           # Nx configuration
 └── README.md         # This file
 ```
 

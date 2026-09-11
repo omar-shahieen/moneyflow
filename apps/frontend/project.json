@@ -20,6 +20,10 @@
       "executor": "nx:run-commands",
       "options": { "command": "bun run lint", "cwd": "apps/frontend" }
     },
+    "lint:fix": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run lint:fix", "cwd": "apps/frontend" }
+    },
     "typecheck": {
       "executor": "nx:run-commands",
       "options": { "command": "bun run typecheck", "cwd": "apps/frontend" }
@@ -27,6 +31,10 @@
     "format": {
       "executor": "nx:run-commands",
       "options": { "command": "bun run format", "cwd": "apps/frontend" }
+    },
+    "format:fix": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run format:fix", "cwd": "apps/frontend" }
     },
     "clean": {
       "executor": "nx:run-commands",

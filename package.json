@@ -2,20 +2,16 @@
   "name": "moneyflow",
   "version": "1.0.0",
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "format:check": "turbo run format:check",
-    "format:fix": "turbo run format:fix",
-    "lint": "turbo run lint",
-    "lint:fix": "turbo run lint:fix",
-    "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rimraf node_modules",
-    "nx:build": "nx run-many -t build",
-    "nx:dev": "nx run-many -t dev --parallel",
-    "nx:lint": "nx run-many -t lint",
-    "nx:test": "nx run-many -t test",
-    "nx:typecheck": "nx run-many -t typecheck",
-    "nx:clean": "nx run-many -t clean"
+    "build": "nx run-many -t build",
+    "dev": "nx run-many -t dev --parallel",
+    "format:check": "nx run-many -t format",
+    "format:fix": "nx run frontend:format:fix && nx run backend:format:fix",
+    "lint": "nx run-many -t lint",
+    "lint:fix": "nx run frontend:lint:fix",
+    "typecheck": "nx run-many -t typecheck",
+    "test": "nx run-many -t test",
+    "clean": "nx run-many -t clean && rimraf node_modules",
+    "nx:graph": "nx graph"
   },
   "packageManager": "bun@1.2.13",
   "engines": {
@@ -27,7 +23,6 @@
   ],
   "devDependencies": {
     "nx": "^23.2.1",
-    "turbo": "^2.5.5",
     "typescript": "^5.8.3"
   }
 }

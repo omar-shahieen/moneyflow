@@ -676,13 +676,13 @@ Once this foundation is in place and passing its own tests, domain features (Cat
 
 ## 14. Implementation Plan — Nx + Gin Migration
 
-This plan converts the current Turborepo/Echo starter into an Nx monorepo with a Gin backend while preserving the existing architectural goals and API behavior. The migration is intentionally incremental: each phase leaves the repository buildable and has a concrete exit check.
+This plan converts the former Turborepo/Echo starter into an Nx monorepo with a Gin backend while preserving the existing architectural goals and API behavior. The migration is intentionally incremental: each phase leaves the repository buildable and has a concrete exit check.
 
 ### 14.1 Current Baseline
 
 The repository currently has:
 
-* A Bun workspace with `apps/*` and `packages/*` plus Turborepo scripts in the root `package.json`.
+* A Bun workspace with `apps/*` and `packages/*` plus Nx project targets.
 * A Go module at `apps/backend`.
 * Echo-specific routing, middleware, and handler abstractions in `internal/router`, `internal/middleware`, and `internal/handler`.
 * Reusable backend infrastructure for configuration, PostgreSQL, Redis/Asynq, logging, New Relic, email, and testing.
@@ -735,7 +735,7 @@ The migration must not mix framework conversion with new finance features. First
 
 1. Install Nx and add `nx.json` with named inputs, cacheable targets, and the default base branch configuration.
 2. Generate or hand-author Nx project configuration for `frontend`, `openapi`, `zod`, `emails`, and `api`.
-3. Replace root Turborepo scripts with Nx equivalents:
+3. Use root Nx scripts for workspace orchestration:
   * `bun nx run-many -t build`
   * `bun nx run-many -t lint`
   * `bun nx run-many -t typecheck`
@@ -744,7 +744,7 @@ The migration must not mix framework conversion with new finance features. First
 4. Keep Go commands explicit in the API project targets. Typical targets are `go test ./...`, `go vet ./...`, `gofmt -w`/check, `go build ./cmd/api`, and `go run ./cmd/api`.
 5. Add project tags and dependencies so frontend packages depend on contract packages, while the Go API does not depend on frontend source packages.
 6. Update CI to use `nx affected` for JavaScript/TypeScript projects and the API project target for Go. Retain a full verification job for release branches.
-7. Remove Turborepo only after all local and CI workflows use Nx and the task graph produces equivalent results.
+7. Keep the Nx configuration and project targets as the single workspace orchestration layer.
 
 **Exit gate:** `nx graph` shows the intended project dependencies, affected checks pass on a small change, and a clean checkout can build every project through Nx.
 
@@ -842,7 +842,7 @@ Keep the migration reviewable with small, independently verifiable changes:
 3. `feat(api): add gin composition root and core middleware`
 4. `refactor(api): migrate auth, observability, jobs, and email to gin`
 5. `test(api): add gin contract and integration coverage`
-6. `chore: remove echo and retire turborepo configuration`
+6. `chore: remove echo and retire legacy orchestration configuration`
 7. `feat: implement product vertical slices`
 8. `ci: enable nx affected checks and release verification`
 

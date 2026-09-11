@@ -12,7 +12,7 @@
     "lint": "eslint src",
     "format": "prettier . --check",
     "format:fix": "prettier --write .",
-    "clean": "rimraf tsconfig.tsbuildinfo .turbo node_modules",
+    "clean": "rimraf tsconfig.tsbuildinfo node_modules",
     "typecheck": "tsc"
   },
   "dependencies": {

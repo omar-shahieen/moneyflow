@@ -77,7 +77,7 @@ Organize by feature once product work begins. Keep reusable UI primitives separa
    - `preview`.
 3. Declare dependencies on `packages/openapi` and `packages/zod`.
 4. Configure Nx caching for build, test, lint, typecheck, and format outputs.
-5. Replace direct frontend Turborepo orchestration with Nx targets while preserving the existing Vite commands.
+5. Use Nx targets for frontend orchestration while preserving the existing Vite commands.
 6. Verify that a change to a shared contract package marks the frontend affected.
 
 **Exit gate:** `nx run frontend:dev`, `nx run frontend:typecheck`, and `nx run frontend:build` work from a clean checkout.
