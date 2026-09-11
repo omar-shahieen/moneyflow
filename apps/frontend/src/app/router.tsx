@@ -8,6 +8,8 @@ import { CategoriesPage } from "@/features/categories/categories-page";
 import { TransactionsPage } from "@/features/transactions/transactions-page";
 import { BudgetsPage } from "@/features/budgets/budgets-page";
 import { SubscriptionPage } from "@/features/subscription/subscription-page";
+import { ImportsPage } from "@/features/imports/imports-page";
+import { ReportsPage } from "@/features/reports/reports-page";
 
 export const router = createBrowserRouter([
   {
@@ -41,6 +43,14 @@ export const router = createBrowserRouter([
       {
         path: "budgets",
         element: <BudgetsPage />,
+      },
+      {
+        path: "imports",
+        element: <ImportsPage />,
+      },
+      {
+        path: "reports",
+        element: <ReportsPage />,
       },
       {
         path: "subscription",

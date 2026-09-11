@@ -8,6 +8,8 @@ import {
   ArrowLeftRight,
   PiggyBank,
   Crown,
+  Upload,
+  FileText,
   Menu,
   X,
 } from "lucide-react";
@@ -48,6 +50,8 @@ const navItems = [
   { href: "/categories", label: "Categories", icon: Tag },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/budgets", label: "Budgets", icon: PiggyBank },
+  { href: "/imports", label: "CSV Imports", icon: Upload },
+  { href: "/reports", label: "Reports", icon: FileText },
   { href: "/subscription", label: "Subscription", icon: Crown },
 ];
 
