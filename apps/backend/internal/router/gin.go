@@ -47,6 +47,7 @@ func (r *GinRouter) setupMiddleware() {
 	r.engine.Use(middleware.CORSMiddleware(r.config.Server.CORSAllowedOrigins))
 	r.engine.Use(middleware.SecureMiddleware())
 	r.engine.Use(middleware.ContextEnrichmentMiddleware(r.logger))
+	r.engine.Use(middleware.ErrorHandlerMiddleware())
 	r.engine.Use(middleware.LoggerMiddleware(r.logger))
 }
 
