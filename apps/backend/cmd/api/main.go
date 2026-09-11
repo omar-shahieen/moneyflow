@@ -51,6 +51,7 @@ func main() {
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
 	budgetMemberRepo := repository.NewBudgetMemberRepository(db.Pool)
 	recurringRuleRepo := repository.NewRecurringRuleRepository(db.Pool)
+	importRepo := repository.NewImportRepository(db.Pool)
 
 	planGuard := service.NewPlanGuardService(db.Pool)
 
@@ -71,6 +72,9 @@ func main() {
 	localStorage := storage.NewLocalStorage("./uploads")
 	receiptHandler := handler.NewReceiptHandler(localStorage)
 
+	importService := service.NewImportService(importRepo, transactionRepo, categoryRepo, planGuard, db.Pool)
+	importHandler := handler.NewImportHandler(importService)
+
 	r.SetHandlers(&router.Handlers{
 		Category:     categoryHandler,
 		Transaction:  transactionHandler,
@@ -78,6 +82,7 @@ func main() {
 		Subscription: subscriptionHandler,
 		Recurring:    recurringRuleHandler,
 		Receipt:      receiptHandler,
+		Import:       importHandler,
 	})
 
 	httpServer := &http.Server{

@@ -104,6 +104,7 @@ type ImportRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.Import, error)
 	Create(ctx context.Context, imp *model.Import) error
 	Update(ctx context.Context, imp *model.Import) error
+	EnsureNoActiveImport(ctx context.Context, userID string) error
 }
 
 type SubscriptionRepository interface {
