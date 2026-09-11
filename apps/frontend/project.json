@@ -39,6 +39,10 @@
     "clean": {
       "executor": "nx:run-commands",
       "options": { "command": "bun run clean", "cwd": "apps/frontend" }
+    },
+    "preview": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run preview", "cwd": "apps/frontend" }
     }
   }
 }
