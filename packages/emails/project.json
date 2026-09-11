@@ -1,0 +1,19 @@
+{
+  "name": "emails",
+  "projectType": "library",
+  "sourceRoot": "packages/emails/src",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run dev", "cwd": "packages/emails" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit", "cwd": "packages/emails" }
+    },
+    "export": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run export", "cwd": "packages/emails" }
+    }
+  }
+}

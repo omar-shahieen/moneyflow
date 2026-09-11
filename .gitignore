@@ -43,6 +43,7 @@ build
 dist
 tmp
 .turbo
+.nx
 
 # Debug
 npm-debug.log*

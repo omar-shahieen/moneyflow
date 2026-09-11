@@ -9,7 +9,13 @@
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",
     "typecheck": "turbo run typecheck",
-    "clean": "turbo run clean && rimraf node_modules"
+    "clean": "turbo run clean && rimraf node_modules",
+    "nx:build": "nx run-many -t build",
+    "nx:dev": "nx run-many -t dev --parallel",
+    "nx:lint": "nx run-many -t lint",
+    "nx:test": "nx run-many -t test",
+    "nx:typecheck": "nx run-many -t typecheck",
+    "nx:clean": "nx run-many -t clean"
   },
   "packageManager": "bun@1.2.13",
   "engines": {
@@ -20,6 +26,7 @@
     "packages/*"
   ],
   "devDependencies": {
+    "nx": "^23.2.1",
     "turbo": "^2.5.5",
     "typescript": "^5.8.3"
   }

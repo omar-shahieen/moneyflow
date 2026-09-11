@@ -1,0 +1,36 @@
+{
+  "name": "frontend",
+  "projectType": "application",
+  "sourceRoot": "apps/frontend/src",
+  "implicitDependencies": ["openapi", "zod"],
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run dev", "cwd": "apps/frontend" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run build", "cwd": "apps/frontend" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run test", "cwd": "apps/frontend" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run lint", "cwd": "apps/frontend" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run typecheck", "cwd": "apps/frontend" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run format", "cwd": "apps/frontend" }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run clean", "cwd": "apps/frontend" }
+    }
+  }
+}

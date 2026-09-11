@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "projectType": "application",
+  "sourceRoot": "apps/backend",
+  "targets": {
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go run ./cmd/moneyflow", "cwd": "apps/backend" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go build ./cmd/moneyflow", "cwd": "apps/backend" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go test ./...", "cwd": "apps/backend" }
+    },
+    "test:race": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go test -race ./...", "cwd": "apps/backend" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go vet ./...", "cwd": "apps/backend" }
+    },
+    "format": {
+      "executor": "nx:run-commands",
+      "options": { "command": "gofmt -l .", "cwd": "apps/backend" }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": { "command": "go clean", "cwd": "apps/backend" }
+    }
+  }
+}

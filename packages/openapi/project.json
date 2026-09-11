@@ -1,0 +1,24 @@
+{
+  "name": "openapi",
+  "projectType": "library",
+  "sourceRoot": "packages/openapi/src",
+  "implicitDependencies": ["zod"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run build", "cwd": "packages/openapi" }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run dev", "cwd": "packages/openapi" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "tsc --noEmit", "cwd": "packages/openapi" }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bun run clean", "cwd": "packages/openapi" }
+    }
+  }
+}
