@@ -7,6 +7,7 @@ import {
   Tag,
   ArrowLeftRight,
   PiggyBank,
+  Crown,
   Menu,
   X,
 } from "lucide-react";
@@ -47,6 +48,7 @@ const navItems = [
   { href: "/categories", label: "Categories", icon: Tag },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
   { href: "/budgets", label: "Budgets", icon: PiggyBank },
+  { href: "/subscription", label: "Subscription", icon: Crown },
 ];
 
 function Sidebar() {
