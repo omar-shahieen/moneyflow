@@ -6,6 +6,7 @@ import { SignUpPage } from "@/pages/sign-up";
 import { NotFoundPage } from "@/pages/not-found";
 import { CategoriesPage } from "@/features/categories/categories-page";
 import { TransactionsPage } from "@/features/transactions/transactions-page";
+import { BudgetsPage } from "@/features/budgets/budgets-page";
 
 export const router = createBrowserRouter([
   {
@@ -35,6 +36,10 @@ export const router = createBrowserRouter([
       {
         path: "transactions",
         element: <TransactionsPage />,
+      },
+      {
+        path: "budgets",
+        element: <BudgetsPage />,
       },
     ],
   },
