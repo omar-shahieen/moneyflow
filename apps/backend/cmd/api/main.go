@@ -50,19 +50,24 @@ func main() {
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
 	budgetMemberRepo := repository.NewBudgetMemberRepository(db.Pool)
 
-	categoryService := service.NewCategoryService(categoryRepo, userRepo, nil)
+	planGuard := service.NewPlanGuardService(db.Pool)
+
+	categoryService := service.NewCategoryService(categoryRepo, userRepo, planGuard)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
 
-	transactionService := service.NewTransactionService(transactionRepo, categoryRepo, nil)
+	transactionService := service.NewTransactionService(transactionRepo, categoryRepo, planGuard)
 	transactionHandler := handler.NewTransactionHandler(transactionService)
 
-	budgetService := service.NewBudgetService(budgetRepo, budgetMemberRepo, categoryRepo, nil)
+	budgetService := service.NewBudgetService(budgetRepo, budgetMemberRepo, categoryRepo, planGuard)
 	budgetHandler := handler.NewBudgetHandler(budgetService)
 
+	subscriptionHandler := handler.NewSubscriptionHandler(db.Pool)
+
 	r.SetHandlers(&router.Handlers{
-		Category:    categoryHandler,
-		Transaction: transactionHandler,
-		Budget:      budgetHandler,
+		Category:     categoryHandler,
+		Transaction:  transactionHandler,
+		Budget:       budgetHandler,
+		Subscription: subscriptionHandler,
 	})
 
 	httpServer := &http.Server{
