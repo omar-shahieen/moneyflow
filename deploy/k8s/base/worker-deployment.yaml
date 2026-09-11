@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moneyflow-worker
+  namespace: moneyflow
+  labels:
+    app.kubernetes.io/name: moneyflow
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: moneyflow
+      app.kubernetes.io/component: worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: moneyflow
+        app.kubernetes.io/component: worker
+    spec:
+      # Longer grace period: Asynq allows active jobs to finish before shutdown
+      terminationGracePeriodSeconds: 120
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+
+      containers:
+        - name: worker
+          image: moneyflow-api:latest   # same image, different CMD
+          command: ["/moneyflow", "worker"]
+
+          envFrom:
+            - configMapRef:
+                name: moneyflow-config
+            - secretRef:
+                name: moneyflow-secrets
+
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 1000m     # workers can spike CPU during report/CSV generation
+              memory: 1Gi
+
+          # Workers don't expose HTTP — use exec probe to check process health
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "pgrep moneyflow > /dev/null"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]

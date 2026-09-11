@@ -1,0 +1,129 @@
+# ============================================================
+# MoneyFlow — Docker Compose (local development)
+# Usage:
+#   docker compose up -d                  # start all services
+#   docker compose --profile migrate up   # run DB migrations
+#   docker compose logs -f api            # tail API logs
+#   docker compose down -v                # destroy everything incl. volumes
+# ============================================================
+
+services:
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: moneyflow
+      POSTGRES_PASSWORD: moneyflow
+      POSTGRES_DB: moneyflow
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneyflow -d moneyflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ── Redis ──────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # ── Database migrations (run once per release) ─────────────
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder          # reuse the builder stage; no need for the distroless image
+    command: ["migrate"]
+    environment:
+      MONEYFLOW_PRIMARY.ENV: local
+      MONEYFLOW_DATABASE.HOST: postgres
+      MONEYFLOW_DATABASE.PORT: "5432"
+      MONEYFLOW_DATABASE.USER: moneyflow
+      MONEYFLOW_DATABASE.PASSWORD: moneyflow
+      MONEYFLOW_DATABASE.NAME: moneyflow
+      MONEYFLOW_DATABASE.SSL_MODE: disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - migrate
+    restart: "no"
+
+  # ── Go API ─────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["api"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - .env
+    environment:
+      # Override service-discovery hostnames for Docker networking
+      MONEYFLOW_DATABASE.HOST: postgres
+      MONEYFLOW_DATABASE.PORT: "5432"
+      MONEYFLOW_REDIS.ADDRESS: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Asynq background worker ────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["worker"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MONEYFLOW_DATABASE.HOST: postgres
+      MONEYFLOW_DATABASE.PORT: "5432"
+      MONEYFLOW_REDIS.ADDRESS: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── React / Vite frontend ──────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5173:80"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:

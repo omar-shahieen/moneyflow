@@ -1,0 +1,55 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: moneyflow
+  namespace: moneyflow
+  labels:
+    app.kubernetes.io/name: moneyflow
+  annotations:
+    # cert-manager issues and renews TLS certificates automatically
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # nginx-ingress specific tweaks
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"          # limit upload size
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/rate-limit: "100"                # RPS per IP (in addition to app-level rate limiting)
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
+      more_set_headers "X-Frame-Options: SAMEORIGIN";
+      more_set_headers "X-Content-Type-Options: nosniff";
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - moneyflow.example.com      # patched by overlays
+      secretName: moneyflow-tls
+  rules:
+    - host: moneyflow.example.com    # patched by overlays
+      http:
+        paths:
+          # API traffic → Go backend
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: moneyflow-api
+                port:
+                  name: http
+          # Health endpoint exposed directly (used by load-balancer health checks)
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: moneyflow-api
+                port:
+                  name: http
+          # Everything else → React SPA
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: moneyflow-frontend
+                port:
+                  name: http

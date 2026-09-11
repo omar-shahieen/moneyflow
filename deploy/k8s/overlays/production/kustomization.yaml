@@ -1,0 +1,124 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: moneyflow-production
+
+resources:
+  - ../../base
+
+patches:
+  # ── Namespace override ────────────────────────────────────────
+  - patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: moneyflow
+      $patch: replace
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: moneyflow-production
+
+  # ── Production replica counts (HA) ───────────────────────────
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-api
+        namespace: moneyflow-production
+      spec:
+        replicas: 3
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-frontend
+        namespace: moneyflow-production
+      spec:
+        replicas: 3
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-worker
+        namespace: moneyflow-production
+      spec:
+        replicas: 2
+
+  # ── Production resource limits (higher) ──────────────────────
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-api
+        namespace: moneyflow-production
+      spec:
+        template:
+          spec:
+            containers:
+              - name: api
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 256Mi
+                  limits:
+                    cpu: 1000m
+                    memory: 1Gi
+
+  # ── ConfigMap overrides for production ───────────────────────
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: moneyflow-config
+        namespace: moneyflow-production
+      data:
+        MONEYFLOW_PRIMARY.ENV: "production"
+        MONEYFLOW_OBSERVABILITY.ENVIRONMENT: "production"
+        MONEYFLOW_SERVER.CORS_ALLOWED_ORIGINS: "https://moneyflow.example.com"
+        MONEYFLOW_DATABASE.MAX_OPEN_CONNS: "50"
+        MONEYFLOW_DATABASE.MAX_IDLE_CONNS: "25"
+
+  # ── Ingress host override ─────────────────────────────────────
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: moneyflow
+        namespace: moneyflow-production
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-prod"
+          nginx.ingress.kubernetes.io/rate-limit: "200"
+      spec:
+        tls:
+          - hosts:
+              - moneyflow.example.com
+            secretName: moneyflow-prod-tls
+        rules:
+          - host: moneyflow.example.com
+            http:
+              paths:
+                - path: /api
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: moneyflow-api
+                      port:
+                        name: http
+                - path: /health
+                  pathType: Exact
+                  backend:
+                    service:
+                      name: moneyflow-api
+                      port:
+                        name: http
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: moneyflow-frontend
+                      port:
+                        name: http
+
+# Image tags are overwritten by the production deploy workflow:
+#   kustomize edit set image moneyflow-api=<registry>/<image>@sha256:<digest>
