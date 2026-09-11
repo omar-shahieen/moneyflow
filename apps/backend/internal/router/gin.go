@@ -25,6 +25,7 @@ type GinRouter struct {
 type Handlers struct {
 	Category    *handler.CategoryHandler
 	Transaction *handler.TransactionHandler
+	Budget      *handler.BudgetHandler
 }
 
 type Services struct {
@@ -97,6 +98,16 @@ func (r *GinRouter) registerDomainRoutes() {
 		transactions.POST("", r.handlers.Transaction.Create)
 		transactions.PATCH("/:id", r.handlers.Transaction.Update)
 		transactions.DELETE("/:id", r.handlers.Transaction.Delete)
+	}
+
+	if r.handlers.Budget != nil {
+		budgets := v1.Group("/budgets")
+		budgets.GET("", r.handlers.Budget.List)
+		budgets.GET("/:id", r.handlers.Budget.GetByID)
+		budgets.POST("", r.handlers.Budget.Create)
+		budgets.PATCH("/:id", r.handlers.Budget.Update)
+		budgets.POST("/:id/members", r.handlers.Budget.AddMember)
+		budgets.DELETE("/:id/members/:userId", r.handlers.Budget.RemoveMember)
 	}
 }
 
