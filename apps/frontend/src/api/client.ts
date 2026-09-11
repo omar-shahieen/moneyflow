@@ -10,9 +10,14 @@ export const apiClient = axios.create({
 });
 
 let getTokenFn: (() => Promise<string | null>) | null = null;
+let onUnauthorized: (() => void) | null = null;
 
 export function setTokenGetter(fn: () => Promise<string | null>) {
   getTokenFn = fn;
+}
+
+export function setOnUnauthorized(fn: () => void) {
+  onUnauthorized = fn;
 }
 
 apiClient.interceptors.request.use(async (config) => {
@@ -28,9 +33,12 @@ apiClient.interceptors.request.use(async (config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiError>) => {
-    if (error.response?.status === 401 && !error.config?.headers["x-retry"]) {
-      error.config!.headers["x-retry"] = "true";
-      return apiClient.request(error.config!);
+    if (error.response?.status === 401) {
+      if (!error.config?.headers["x-retry"]) {
+        error.config!.headers["x-retry"] = "true";
+        return apiClient.request(error.config!);
+      }
+      onUnauthorized?.();
     }
     throw error;
   }
