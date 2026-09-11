@@ -10,6 +10,7 @@ import {
   Crown,
   Upload,
   FileText,
+  Settings,
   Menu,
   X,
 } from "lucide-react";
@@ -53,6 +54,7 @@ const navItems = [
   { href: "/imports", label: "CSV Imports", icon: Upload },
   { href: "/reports", label: "Reports", icon: FileText },
   { href: "/subscription", label: "Subscription", icon: Crown },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 function Sidebar() {

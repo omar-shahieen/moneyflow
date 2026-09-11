@@ -10,6 +10,7 @@ import { BudgetsPage } from "@/features/budgets/budgets-page";
 import { SubscriptionPage } from "@/features/subscription/subscription-page";
 import { ImportsPage } from "@/features/imports/imports-page";
 import { ReportsPage } from "@/features/reports/reports-page";
+import { SettingsPage } from "@/features/settings/settings-page";
 
 export const router = createBrowserRouter([
   {
@@ -55,6 +56,10 @@ export const router = createBrowserRouter([
       {
         path: "subscription",
         element: <SubscriptionPage />,
+      },
+      {
+        path: "settings",
+        element: <SettingsPage />,
       },
     ],
   },
