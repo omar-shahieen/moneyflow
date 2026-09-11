@@ -8,10 +8,12 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/omar-shahieen/moneyflow/internal/config"
 	"github.com/omar-shahieen/moneyflow/internal/database"
 	"github.com/omar-shahieen/moneyflow/internal/logger"
 	"github.com/omar-shahieen/moneyflow/internal/router"
+	"github.com/redis/go-redis/v9"
 )
 
 const DefaultContextTimeout = 30
@@ -32,6 +34,15 @@ func main() {
 		log.Fatal().Err(err).Msg("failed to initialize database")
 	}
 	defer db.Close()
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: cfg.Redis.Address,
+	})
+	defer redisClient.Close()
+
+	_ = asynq.NewClient(asynq.RedisClientOpt{
+		Addr: cfg.Redis.Address,
+	})
 
 	r := router.NewGinRouter(cfg, db.Pool, log)
 
