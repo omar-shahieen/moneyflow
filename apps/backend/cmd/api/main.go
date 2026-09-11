@@ -15,6 +15,7 @@ import (
 	"github.com/omar-shahieen/moneyflow/internal/repository"
 	"github.com/omar-shahieen/moneyflow/internal/router"
 	"github.com/omar-shahieen/moneyflow/internal/service"
+	"github.com/omar-shahieen/moneyflow/internal/storage"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -67,12 +68,16 @@ func main() {
 	recurringRuleService := service.NewRecurringRuleService(recurringRuleRepo, categoryRepo, transactionRepo, planGuard)
 	recurringRuleHandler := handler.NewRecurringRuleHandler(recurringRuleService)
 
+	localStorage := storage.NewLocalStorage("./uploads")
+	receiptHandler := handler.NewReceiptHandler(localStorage)
+
 	r.SetHandlers(&router.Handlers{
 		Category:     categoryHandler,
 		Transaction:  transactionHandler,
 		Budget:       budgetHandler,
 		Subscription: subscriptionHandler,
 		Recurring:    recurringRuleHandler,
+		Receipt:      receiptHandler,
 	})
 
 	httpServer := &http.Server{
