@@ -33,7 +33,7 @@ func main() {
 	}
 	defer db.Close()
 
-	r := router.NewGinRouter(cfg, db.Pool)
+	r := router.NewGinRouter(cfg, db.Pool, log)
 
 	httpServer := &http.Server{
 		Addr:         ":" + cfg.Server.Port,

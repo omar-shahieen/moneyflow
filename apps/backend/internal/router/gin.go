@@ -8,15 +8,18 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/omar-shahieen/moneyflow/internal/config"
+	"github.com/omar-shahieen/moneyflow/internal/middleware"
+	"github.com/rs/zerolog"
 )
 
 type GinRouter struct {
 	engine *gin.Engine
 	config *config.Config
 	db     *pgxpool.Pool
+	logger zerolog.Logger
 }
 
-func NewGinRouter(cfg *config.Config, db *pgxpool.Pool) *GinRouter {
+func NewGinRouter(cfg *config.Config, db *pgxpool.Pool, log zerolog.Logger) *GinRouter {
 	if cfg.Primary.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	} else {
@@ -29,6 +32,7 @@ func NewGinRouter(cfg *config.Config, db *pgxpool.Pool) *GinRouter {
 		engine: engine,
 		config: cfg,
 		db:     db,
+		logger: log,
 	}
 
 	r.setupMiddleware()
@@ -38,7 +42,12 @@ func NewGinRouter(cfg *config.Config, db *pgxpool.Pool) *GinRouter {
 }
 
 func (r *GinRouter) setupMiddleware() {
-	r.engine.Use(gin.Recovery())
+	r.engine.Use(middleware.RecoveryMiddleware(&r.logger))
+	r.engine.Use(middleware.RequestIDMiddleware())
+	r.engine.Use(middleware.CORSMiddleware(r.config.Server.CORSAllowedOrigins))
+	r.engine.Use(middleware.SecureMiddleware())
+	r.engine.Use(middleware.ContextEnrichmentMiddleware(r.logger))
+	r.engine.Use(middleware.LoggerMiddleware(r.logger))
 }
 
 func (r *GinRouter) setupRoutes() {
@@ -60,7 +69,6 @@ func (r *GinRouter) healthCheck(c *gin.Context) {
 	checks := response["checks"].(gin.H)
 	isHealthy := true
 
-	// Check database connectivity
 	if r.db != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
