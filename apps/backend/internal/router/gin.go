@@ -23,7 +23,8 @@ type GinRouter struct {
 }
 
 type Handlers struct {
-	Category *handler.CategoryHandler
+	Category    *handler.CategoryHandler
+	Transaction *handler.TransactionHandler
 }
 
 type Services struct {
@@ -86,6 +87,16 @@ func (r *GinRouter) registerDomainRoutes() {
 		categories.POST("", r.handlers.Category.Create)
 		categories.PATCH("/:id", r.handlers.Category.Update)
 		categories.DELETE("/:id", r.handlers.Category.Delete)
+	}
+
+	if r.handlers.Transaction != nil {
+		transactions := v1.Group("/transactions")
+		transactions.GET("", r.handlers.Transaction.List)
+		transactions.GET("/summary", r.handlers.Transaction.Summary)
+		transactions.GET("/:id", r.handlers.Transaction.GetByID)
+		transactions.POST("", r.handlers.Transaction.Create)
+		transactions.PATCH("/:id", r.handlers.Transaction.Update)
+		transactions.DELETE("/:id", r.handlers.Transaction.Delete)
 	}
 }
 
