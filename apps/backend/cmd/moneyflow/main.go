@@ -3,11 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"os"
-	"os/signal"
-	"time"
-
 	"github.com/omar-shahieen/moneyflow/internal/config"
 	"github.com/omar-shahieen/moneyflow/internal/handler"
 	"github.com/omar-shahieen/moneyflow/internal/logger"
@@ -15,6 +10,10 @@ import (
 	"github.com/omar-shahieen/moneyflow/internal/router"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/service"
+	"net/http"
+	"os"
+	"os/signal"
+	"time"
 )
 
 const DefaultContextTimeout = 30

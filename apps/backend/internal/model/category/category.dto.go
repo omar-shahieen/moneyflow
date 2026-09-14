@@ -21,6 +21,10 @@ type ListCategoriesRequest struct {
 	Type string `form:"type" binding:"omitempty,oneof=income expense"`
 }
 
+type CategoryFilters struct {
+	Type *string
+}
+
 type CreateCategoryRequest struct {
 	Name string `json:"name" binding:"required,min=1,max=100"`
 	Type string `json:"type" binding:"required,oneof=income expense"`

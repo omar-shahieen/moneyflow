@@ -27,8 +27,6 @@ func NewContextEnhancer(s *server.Server) *ContextEnhancer {
 func (ce *ContextEnhancer) EnhanceContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Extract request ID
-		// NOTE: assumes a gin-compatible GetRequestID(c *gin.Context); update the
-		// call if your request-ID middleware is still Echo-specific.
 		requestID := GetRequestID(c)
 
 		// Create enhanced logger with request context

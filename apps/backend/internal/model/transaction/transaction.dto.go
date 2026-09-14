@@ -65,3 +65,39 @@ func (r DeleteTransactionRequest) Validate() error {
 type TransactionResponse struct {
 	Transaction
 }
+
+type SummaryRequest struct {
+	Month time.Time `form:"month" validate:"omitempty,datetime=2006-01"`
+}
+
+func (r SummaryRequest) Validate() error {
+	return validate.Struct(r)
+}
+
+type TransactionSummary struct {
+	TotalIncome  int64           `json:"total_income"`
+	TotalExpense int64           `json:"total_expense"`
+	ByCategory   []CategoryTotal `json:"by_category"`
+	ByCurrency   []CurrencyTotal `json:"by_currency"`
+}
+
+type CategoryTotal struct {
+	CategoryID   uuid.UUID `json:"category_id"`
+	CategoryName string    `json:"category_name"`
+	Total        int64     `json:"total"`
+	Type         string    `json:"type"`
+}
+
+type CurrencyTotal struct {
+	Currency     string `json:"currency"`
+	TotalIncome  int64  `json:"total_income"`
+	TotalExpense int64  `json:"total_expense"`
+}
+type TransactionFilters struct {
+	CategoryID *uuid.UUID
+	Type       *string
+	From       *time.Time
+	To         *time.Time
+	MinAmount  *int64
+	MaxAmount  *int64
+}

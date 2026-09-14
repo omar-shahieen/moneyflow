@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -25,8 +26,10 @@ type Base struct {
 }
 
 type PaginationRequest struct {
-	Page     int `form:"page" binding:"omitempty,min=1"`
-	PageSize int `form:"page_size" binding:"omitempty,min=1,max=100"`
+	Page     int    `form:"page" binding:"omitempty,min=1"`
+	PageSize int    `form:"page_size" binding:"omitempty,min=1,max=100"`
+	Sort     string `form:"sort" binding:"omitempty"`
+	Order    string `form:"order" binding:"omitempty,oneof=asc desc"`
 }
 
 func (r *PaginationRequest) Normalize() {
@@ -35,6 +38,10 @@ func (r *PaginationRequest) Normalize() {
 	}
 	if r.PageSize < 1 || r.PageSize > 100 {
 		r.PageSize = 20
+	}
+	r.Order = strings.ToLower(r.Order)
+	if r.Order != "" && r.Order != "asc" && r.Order != "desc" {
+		r.Order = "desc"
 	}
 }
 
@@ -45,9 +52,18 @@ func (r PaginationRequest) Validate() error {
 
 func (r PaginationRequest) ToListQuery() *ListQuery {
 	r.Normalize()
+	var sort, order *string
+	if r.Sort != "" {
+		sort = &r.Sort
+	}
+	if r.Order != "" {
+		order = &r.Order
+	}
 	return &ListQuery{
 		Page:  r.Page,
 		Limit: r.PageSize,
+		Sort:  sort,
+		Order: order,
 	}
 }
 

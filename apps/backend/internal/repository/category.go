@@ -48,7 +48,7 @@ func (r *CategoryRepo) GetByID(ctx context.Context, id uuid.UUID, userID string)
 	return &cat, nil
 }
 
-func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[category.Category], error) {
+func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters category.CategoryFilters) (*model.PaginatedResponse[category.Category], error) {
 	stmt := `
 		SELECT
 			id, user_id, name, type, created_at
@@ -67,14 +67,13 @@ func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.Lis
 		args["search"] = *query.Search
 	}
 
-	sortColumn := "created_at"
-	if query.Sort != nil {
-		sortColumn = *query.Sort
+	if filters.Type != nil {
+		stmt += ` AND type = @type`
+		args["type"] = *filters.Type
 	}
-	sortOrder := "desc"
-	if query.Order != nil {
-		sortOrder = *query.Order
-	}
+
+	sortColumn := r.ensureSortColumn(query.Sort)
+	sortOrder := r.ensureSortOrder(query.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
@@ -116,6 +115,11 @@ func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.Lis
 	if query.Search != nil {
 		countStmt += ` AND name ILIKE '%' || @search || '%'`
 		countArgs["search"] = *query.Search
+	}
+
+	if filters.Type != nil {
+		countStmt += ` AND type = @type`
+		countArgs["type"] = *filters.Type
 	}
 
 	var total int

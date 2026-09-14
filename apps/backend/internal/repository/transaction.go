@@ -11,7 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
-	"github.com/omar-shahieen/moneyflow/internal/ports"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
@@ -50,7 +49,7 @@ func (r *TransactionRepo) GetByID(ctx context.Context, id uuid.UUID, userID stri
 	return &t, nil
 }
 
-func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters ports.TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error) {
+func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters transaction.TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error) {
 	stmt := `
 		SELECT
 			id, user_id, category_id, amount_minor, currency, note, receipt_key, occurred_at, created_at
@@ -230,10 +229,10 @@ func (r *TransactionRepo) CountByUser(ctx context.Context, userID string) (int, 
 	return count, nil
 }
 
-func (r *TransactionRepo) Summary(ctx context.Context, userID string, month time.Time) (*ports.TransactionSummary, error) {
-	summary := &ports.TransactionSummary{
-		ByCategory: []ports.CategoryTotal{},
-		ByCurrency: []ports.CurrencyTotal{},
+func (r *TransactionRepo) Summary(ctx context.Context, userID string, month time.Time) (*transaction.TransactionSummary, error) {
+	summary := &transaction.TransactionSummary{
+		ByCategory: []transaction.CategoryTotal{},
+		ByCurrency: []transaction.CurrencyTotal{},
 	}
 
 	startOfMonth := time.Date(month.Year(), month.Month(), 1, 0, 0, 0, 0, month.Location())
@@ -274,7 +273,7 @@ func (r *TransactionRepo) Summary(ctx context.Context, userID string, month time
 	}
 
 	for catRows.Next() {
-		var ct ports.CategoryTotal
+		var ct transaction.CategoryTotal
 		if err := catRows.Scan(&ct.CategoryID, &ct.CategoryName, &ct.Type, &ct.Total); err != nil {
 			return nil, fmt.Errorf("failed to scan category total: %w", err)
 		}
@@ -300,7 +299,7 @@ func (r *TransactionRepo) Summary(ctx context.Context, userID string, month time
 	}
 
 	for curRows.Next() {
-		var ct ports.CurrencyTotal
+		var ct transaction.CurrencyTotal
 		if err := curRows.Scan(&ct.Currency, &ct.TotalIncome, &ct.TotalExpense); err != nil {
 			return nil, fmt.Errorf("failed to scan currency total: %w", err)
 		}

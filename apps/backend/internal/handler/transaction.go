@@ -2,12 +2,10 @@ package handler
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
-	"github.com/omar-shahieen/moneyflow/internal/ports"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/service"
 )
@@ -87,22 +85,11 @@ func (h *TransactionHandler) Delete(c *gin.Context) {
 func (h *TransactionHandler) Summary(c *gin.Context) {
 	Handle(
 		h.Handler,
-		func(c *gin.Context, req *EmptyRequest) (*ports.TransactionSummary, error) {
+		func(c *gin.Context, req *transaction.SummaryRequest) (*transaction.TransactionSummary, error) {
 			userID := GetUserID(c)
-
-			monthStr := c.Query("month")
-			if monthStr == "" {
-				monthStr = time.Now().Format("2006-01")
-			}
-
-			month, err := time.Parse("2006-01", monthStr)
-			if err != nil {
-				return nil, ErrInvalidID
-			}
-
-			return h.transactionService.Summary(c.Request.Context(), userID, month)
+			return h.transactionService.Summary(c.Request.Context(), userID, req.Month)
 		},
 		http.StatusOK,
-		&EmptyRequest{},
+		&transaction.SummaryRequest{},
 	)(c)
 }

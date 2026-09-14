@@ -99,7 +99,7 @@ func (s *ReportService) generateReport(reportID uuid.UUID, userID string) {
 	rep.Status = report.ReportStatusProcessing
 	_ = s.reportRepo.Update(ctx, rep)
 
-	filters := ports.TransactionFilters{
+	filters := transaction.TransactionFilters{
 		From: &rep.PeriodStart,
 		To:   &rep.PeriodEnd,
 	}

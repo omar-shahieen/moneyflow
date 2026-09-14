@@ -24,7 +24,7 @@ type UserRepository interface {
 
 type CategoryRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*category.Category, error)
-	List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[category.Category], error)
+	List(ctx context.Context, userID string, query *model.ListQuery, filters category.CategoryFilters) (*model.PaginatedResponse[category.Category], error)
 	Create(ctx context.Context, c *category.Category) error
 	Update(ctx context.Context, c *category.Category) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
@@ -33,39 +33,12 @@ type CategoryRepository interface {
 
 type TransactionRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*transaction.Transaction, error)
-	List(ctx context.Context, userID string, query *model.ListQuery, filters TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error)
+	List(ctx context.Context, userID string, query *model.ListQuery, filters transaction.TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error)
 	Create(ctx context.Context, t *transaction.Transaction) error
 	Update(ctx context.Context, t *transaction.Transaction) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
 	CountByUser(ctx context.Context, userID string) (int, error)
-	Summary(ctx context.Context, userID string, month time.Time) (*TransactionSummary, error)
-}
-
-type TransactionFilters struct {
-	CategoryID *uuid.UUID
-	Type       *string
-	From       *time.Time
-	To         *time.Time
-}
-
-type TransactionSummary struct {
-	TotalIncome  int64           `json:"total_income"`
-	TotalExpense int64           `json:"total_expense"`
-	ByCategory   []CategoryTotal `json:"by_category"`
-	ByCurrency   []CurrencyTotal `json:"by_currency"`
-}
-
-type CategoryTotal struct {
-	CategoryID   uuid.UUID `json:"category_id"`
-	CategoryName string    `json:"category_name"`
-	Total        int64     `json:"total"`
-	Type         string    `json:"type"`
-}
-
-type CurrencyTotal struct {
-	Currency     string `json:"currency"`
-	TotalIncome  int64  `json:"total_income"`
-	TotalExpense int64  `json:"total_expense"`
+	Summary(ctx context.Context, userID string, month time.Time) (*transaction.TransactionSummary, error)
 }
 
 type BudgetRepository interface {

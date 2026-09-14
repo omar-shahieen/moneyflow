@@ -323,8 +323,7 @@ func GetRequestID(c *gin.Context) string {
 }
 
 var (
-	ErrUnauthorized = errs.NewUnauthorizedError("unauthorized access, please sign in first", false)
-	ErrInvalidID    = errs.NewBadRequestError("invalid ID format", false, nil, nil, nil)
+	ErrInvalidID = errs.NewBadRequestError("invalid ID format", false, nil, nil, nil)
 )
 
 type EmptyRequest struct{}

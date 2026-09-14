@@ -8,7 +8,6 @@ import (
 	"github.com/omar-shahieen/moneyflow/internal/errs"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
-	"github.com/omar-shahieen/moneyflow/internal/ports"
 	"github.com/omar-shahieen/moneyflow/internal/repository"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 )
@@ -28,7 +27,7 @@ func NewTransactionService(server *server.Server, transactionRepo *repository.Tr
 }
 
 func (s *TransactionService) GetTransactions(ctx context.Context, userID string, query *transaction.ListTransactionsRequest) (*model.PaginatedResponse[transaction.Transaction], error) {
-	filters := ports.TransactionFilters{}
+	filters := transaction.TransactionFilters{}
 	if query.CategoryID != "" {
 		if id, err := uuid.Parse(query.CategoryID); err == nil {
 			filters.CategoryID = &id
@@ -152,7 +151,7 @@ func (s *TransactionService) DeleteTransaction(ctx context.Context, userID strin
 	return nil
 }
 
-func (s *TransactionService) Summary(ctx context.Context, userID string, month time.Time) (*ports.TransactionSummary, error) {
+func (s *TransactionService) Summary(ctx context.Context, userID string, month time.Time) (*transaction.TransactionSummary, error) {
 	summary, err := s.transactionRepo.Summary(ctx, userID, month)
 	if err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to get transaction summary")
