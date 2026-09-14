@@ -1,11 +1,13 @@
 package model
 
 import (
-	"strings"
 	"time"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 )
+
+var validate = validator.New()
 
 type BaseWithId struct {
 	ID uuid.UUID `json:"id" db:"id"`
@@ -26,50 +28,37 @@ type Base struct {
 }
 
 type PaginationRequest struct {
-	Page     int    `form:"page" binding:"omitempty,min=1"`
-	PageSize int    `form:"page_size" binding:"omitempty,min=1,max=100"`
-	Sort     string `form:"sort" binding:"omitempty"`
-	Order    string `form:"order" binding:"omitempty,oneof=asc desc"`
-	Search   string `form:"search" binding:"omitempty,max=200"`
+	Page     *int    `form:"page" binding:"omitempty,min=1"`
+	PageSize *int    `form:"page_size" binding:"omitempty,min=1,max=100"`
+	Sort     *string `form:"sort" binding:"omitempty"`
+	Order    *string `form:"order" binding:"omitempty,oneof=asc desc"`
+	Search   *string `form:"search" binding:"omitempty,max=200"`
 }
 
 func (r *PaginationRequest) Normalize() {
-	if r.Page < 1 {
-		r.Page = 1
+	if r.Page == nil {
+		page := 1
+		r.Page = &page
 	}
-	if r.PageSize < 1 || r.PageSize > 100 {
-		r.PageSize = 20
+
+	if r.PageSize == nil {
+		pageSize := 20
+		r.PageSize = &pageSize
 	}
-	r.Order = strings.ToLower(r.Order)
-	if r.Order != "" && r.Order != "asc" && r.Order != "desc" {
-		r.Order = "desc"
+
+	if r.Order == nil {
+		order := "dsc"
+		r.Order = &order
+	}
+	if r.Sort == nil {
+		Sort := "created_at"
+		r.Sort = &Sort
 	}
 }
 
 func (r PaginationRequest) Validate() error {
 	r.Normalize()
-	return nil
-}
-
-func (r PaginationRequest) ToListQuery() *ListQuery {
-	r.Normalize()
-	var sort, order, search *string
-	if r.Sort != "" {
-		sort = &r.Sort
-	}
-	if r.Order != "" {
-		order = &r.Order
-	}
-	if r.Search != "" {
-		search = &r.Search
-	}
-	return &ListQuery{
-		Page:   r.Page,
-		Limit:  r.PageSize,
-		Sort:   sort,
-		Order:  order,
-		Search: search,
-	}
+	return validate.Struct(r)
 }
 
 type ListQuery struct {
@@ -78,6 +67,17 @@ type ListQuery struct {
 	Search *string
 	Sort   *string
 	Order  *string
+}
+
+func (r PaginationRequest) ToListQuery() *ListQuery {
+	r.Normalize()
+	return &ListQuery{
+		Page:   *r.Page,
+		Limit:  *r.PageSize,
+		Search: r.Search,
+		Sort:   r.Sort,
+		Order:  r.Order,
+	}
 }
 
 type PaginatedResponse[T interface{}] struct {

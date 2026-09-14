@@ -21,6 +21,7 @@ func (r GetTransactionRequest) Validate() error {
 type ListTransactionsRequest struct {
 	model.PaginationRequest
 	CategoryID string     `form:"category_id" binding:"omitempty,uuid"`
+	Type       string     `form:"type" binding:"omitempty,oneof=income expense"`
 	StartDate  *time.Time `form:"start_date" binding:"omitempty"`
 	EndDate    *time.Time `form:"end_date" binding:"omitempty"`
 	MinAmount  *int64     `form:"min_amount" binding:"omitempty"`

@@ -33,11 +33,20 @@ func (s *TransactionService) GetTransactions(ctx context.Context, userID string,
 			filters.CategoryID = &id
 		}
 	}
+	if query.Type != "" {
+		filters.Type = &query.Type
+	}
 	if query.StartDate != nil {
 		filters.From = query.StartDate
 	}
 	if query.EndDate != nil {
 		filters.To = query.EndDate
+	}
+	if query.MinAmount != nil {
+		filters.MinAmount = query.MinAmount
+	}
+	if query.MaxAmount != nil {
+		filters.MaxAmount = query.MaxAmount
 	}
 
 	transactions, err := s.transactionRepo.List(ctx, userID, query.ToListQuery(), filters)

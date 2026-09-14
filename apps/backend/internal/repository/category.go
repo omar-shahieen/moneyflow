@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -72,13 +71,13 @@ func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.Lis
 		args["type"] = *filters.Type
 	}
 
-	sortColumn := r.ensureSortColumn(query.Sort)
-	sortOrder := r.ensureSortOrder(query.Order)
+	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"name": true, "type": true, "created_at": true}, "created_at")
+	sortOrder := EnsureSortOrder(query.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
 	args["limit"] = query.Limit
-	args["offset"] = (query.Page - 1) * query.Limit
+	args["offset"] = Offset(query)
 
 	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
@@ -88,13 +87,7 @@ func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.Lis
 	categories, err := pgx.CollectRows(rows, pgx.RowToStructByName[category.Category])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &model.PaginatedResponse[category.Category]{
-				Data:       []category.Category{},
-				Page:       query.Page,
-				Limit:      query.Limit,
-				Total:      0,
-				TotalPages: 0,
-			}, nil
+			return EmptyPaginatedResponse[category.Category](query), nil
 		}
 		return nil, fmt.Errorf("failed to collect rows from table:categories for user_id=%s: %w", userID, err)
 	}
@@ -128,13 +121,7 @@ func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.Lis
 		return nil, fmt.Errorf("failed to get total count of categories for user_id=%s: %w", userID, err)
 	}
 
-	return &model.PaginatedResponse[category.Category]{
-		Data:       categories,
-		Page:       query.Page,
-		Limit:      query.Limit,
-		Total:      total,
-		TotalPages: (total + query.Limit - 1) / query.Limit,
-	}, nil
+	return NewPaginatedResponse(categories, query, total), nil
 }
 
 func (r *CategoryRepo) Create(ctx context.Context, cat *category.Category) error {
@@ -213,26 +200,4 @@ func (r *CategoryRepo) CountByUser(ctx context.Context, userID string) (int, err
 		return 0, fmt.Errorf("failed to count categories for user_id=%s: %w", userID, err)
 	}
 	return count, nil
-}
-
-func (r *CategoryRepo) ensureSortColumn(sort *string) string {
-	allowed := map[string]bool{
-		"name":       true,
-		"type":       true,
-		"created_at": true,
-	}
-	if sort != nil && allowed[*sort] {
-		return *sort
-	}
-	return "created_at"
-}
-
-func (r *CategoryRepo) ensureSortOrder(order *string) string {
-	if order != nil {
-		o := strings.ToLower(*order)
-		if o == "asc" || o == "desc" {
-			return o
-		}
-	}
-	return "desc"
 }

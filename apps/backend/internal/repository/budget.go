@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -68,13 +67,13 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 		args["search"] = *query.Search
 	}
 
-	sortColumn := r.ensureSortColumn(query.Sort)
-	sortOrder := r.ensureSortOrder(query.Order)
+	sortColumn := "b." + EnsureSortColumn(query.Sort, map[string]bool{"created_at": true, "monthly_limit_minor": true, "currency": true}, "created_at")
+	sortOrder := EnsureSortOrder(query.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
 	args["limit"] = query.Limit
-	args["offset"] = (query.Page - 1) * query.Limit
+	args["offset"] = Offset(query)
 
 	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
@@ -84,13 +83,7 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 	budgets, err := pgx.CollectRows(rows, pgx.RowToStructByName[budget.Budget])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &model.PaginatedResponse[budget.BudgetWithMembers]{
-				Data:       []budget.BudgetWithMembers{},
-				Page:       query.Page,
-				Limit:      query.Limit,
-				Total:      0,
-				TotalPages: 0,
-			}, nil
+			return EmptyPaginatedResponse[budget.BudgetWithMembers](query), nil
 		}
 		return nil, fmt.Errorf("failed to collect rows from table:budgets for user_id=%s: %w", userID, err)
 	}
@@ -142,13 +135,7 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 		return nil, fmt.Errorf("failed to get total count of budgets for user_id=%s: %w", userID, err)
 	}
 
-	return &model.PaginatedResponse[budget.BudgetWithMembers]{
-		Data:       budgetsWithMembers,
-		Page:       query.Page,
-		Limit:      query.Limit,
-		Total:      total,
-		TotalPages: (total + query.Limit - 1) / query.Limit,
-	}, nil
+	return NewPaginatedResponse(budgetsWithMembers, query, total), nil
 }
 
 func (r *BudgetRepo) Create(ctx context.Context, b *budget.Budget) error {
@@ -362,26 +349,4 @@ func (r *BudgetMemberRepo) CountByBudget(ctx context.Context, budgetID uuid.UUID
 		return 0, fmt.Errorf("failed to count budget members for budget_id=%s: %w", budgetID.String(), err)
 	}
 	return count, nil
-}
-
-func (r *BudgetRepo) ensureSortColumn(sort *string) string {
-	allowed := map[string]bool{
-		"created_at":          true,
-		"monthly_limit_minor": true,
-		"currency":            true,
-	}
-	if sort != nil && allowed[*sort] {
-		return "b." + *sort
-	}
-	return "b.created_at"
-}
-
-func (r *BudgetRepo) ensureSortOrder(order *string) string {
-	if order != nil {
-		o := strings.ToLower(*order)
-		if o == "asc" || o == "desc" {
-			return o
-		}
-	}
-	return "desc"
 }

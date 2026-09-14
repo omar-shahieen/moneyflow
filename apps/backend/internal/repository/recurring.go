@@ -75,7 +75,7 @@ func (r *RecurringRuleRepo) List(ctx context.Context, userID string, query *mode
 
 	stmt += ` LIMIT @limit OFFSET @offset`
 	args["limit"] = query.Limit
-	args["offset"] = (query.Page - 1) * query.Limit
+	args["offset"] = Offset(query)
 
 	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
@@ -85,13 +85,7 @@ func (r *RecurringRuleRepo) List(ctx context.Context, userID string, query *mode
 	rules, err := pgx.CollectRows(rows, pgx.RowToStructByName[recurring.RecurringRule])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &model.PaginatedResponse[recurring.RecurringRule]{
-				Data:       []recurring.RecurringRule{},
-				Page:       query.Page,
-				Limit:      query.Limit,
-				Total:      0,
-				TotalPages: 0,
-			}, nil
+			return EmptyPaginatedResponse[recurring.RecurringRule](query), nil
 		}
 		return nil, fmt.Errorf("failed to collect rows from table:recurring_rules for user_id=%s: %w", userID, err)
 	}
@@ -120,13 +114,7 @@ func (r *RecurringRuleRepo) List(ctx context.Context, userID string, query *mode
 		return nil, fmt.Errorf("failed to get total count of recurring rules for user_id=%s: %w", userID, err)
 	}
 
-	return &model.PaginatedResponse[recurring.RecurringRule]{
-		Data:       rules,
-		Page:       query.Page,
-		Limit:      query.Limit,
-		Total:      total,
-		TotalPages: (total + query.Limit - 1) / query.Limit,
-	}, nil
+	return NewPaginatedResponse(rules, query, total), nil
 }
 
 func (r *RecurringRuleRepo) Create(ctx context.Context, rule *recurring.RecurringRule) error {

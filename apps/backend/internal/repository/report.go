@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -72,13 +71,13 @@ func (r *ReportRepo) List(ctx context.Context, userID string, query *model.ListQ
 		args["format"] = *filters.Format
 	}
 
-	sortColumn := r.ensureSortColumn(query.Sort)
-	sortOrder := r.ensureSortOrder(query.Order)
+	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"created_at": true, "period_start": true, "period_end": true, "status": true}, "created_at")
+	sortOrder := EnsureSortOrder(query.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
 	args["limit"] = query.Limit
-	args["offset"] = (query.Page - 1) * query.Limit
+	args["offset"] = Offset(query)
 
 	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
@@ -88,13 +87,7 @@ func (r *ReportRepo) List(ctx context.Context, userID string, query *model.ListQ
 	reports, err := pgx.CollectRows(rows, pgx.RowToStructByName[report.Report])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &model.PaginatedResponse[report.Report]{
-				Data:       []report.Report{},
-				Page:       query.Page,
-				Limit:      query.Limit,
-				Total:      0,
-				TotalPages: 0,
-			}, nil
+			return EmptyPaginatedResponse[report.Report](query), nil
 		}
 		return nil, fmt.Errorf("failed to collect rows from table:reports for user_id=%s: %w", userID, err)
 	}
@@ -128,13 +121,7 @@ func (r *ReportRepo) List(ctx context.Context, userID string, query *model.ListQ
 		return nil, fmt.Errorf("failed to get total count of reports for user_id=%s: %w", userID, err)
 	}
 
-	return &model.PaginatedResponse[report.Report]{
-		Data:       reports,
-		Page:       query.Page,
-		Limit:      query.Limit,
-		Total:      total,
-		TotalPages: (total + query.Limit - 1) / query.Limit,
-	}, nil
+	return NewPaginatedResponse(reports, query, total), nil
 }
 
 func (r *ReportRepo) Create(ctx context.Context, rep *report.Report) error {
@@ -196,27 +183,4 @@ func (r *ReportRepo) CountByUser(ctx context.Context, userID string) (int, error
 		return 0, fmt.Errorf("failed to count reports for user_id=%s: %w", userID, err)
 	}
 	return count, nil
-}
-
-func (r *ReportRepo) ensureSortColumn(sort *string) string {
-	allowed := map[string]bool{
-		"created_at":   true,
-		"period_start": true,
-		"period_end":   true,
-		"status":       true,
-	}
-	if sort != nil && allowed[*sort] {
-		return *sort
-	}
-	return "created_at"
-}
-
-func (r *ReportRepo) ensureSortOrder(order *string) string {
-	if order != nil {
-		o := strings.ToLower(*order)
-		if o == "asc" || o == "desc" {
-			return o
-		}
-	}
-	return "desc"
 }

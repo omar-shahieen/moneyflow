@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,6 +102,20 @@ func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.
 		countArgs["to_date"] = *filters.To
 	}
 
+	if filters.MinAmount != nil {
+		stmt += ` AND amount_minor >= @min_amount`
+		countStmt += ` AND amount_minor >= @min_amount`
+		args["min_amount"] = *filters.MinAmount
+		countArgs["min_amount"] = *filters.MinAmount
+	}
+
+	if filters.MaxAmount != nil {
+		stmt += ` AND amount_minor <= @max_amount`
+		countStmt += ` AND amount_minor <= @max_amount`
+		args["max_amount"] = *filters.MaxAmount
+		countArgs["max_amount"] = *filters.MaxAmount
+	}
+
 	if query.Search != nil {
 		stmt += ` AND note ILIKE '%' || @search || '%'`
 		countStmt += ` AND note ILIKE '%' || @search || '%'`
@@ -116,11 +129,13 @@ func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.
 		return nil, fmt.Errorf("failed to get total count of transactions for user_id=%s: %w", userID, err)
 	}
 
-	stmt += ` ORDER BY occurred_at DESC`
+	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"amount_minor": true, "currency": true, "occurred_at": true, "created_at": true}, "occurred_at")
+	sortOrder := EnsureSortOrder(query.Order)
+	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
 	args["limit"] = query.Limit
-	args["offset"] = (query.Page - 1) * query.Limit
+	args["offset"] = Offset(query)
 
 	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
@@ -130,24 +145,12 @@ func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.
 	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[transaction.Transaction])
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return &model.PaginatedResponse[transaction.Transaction]{
-				Data:       []transaction.Transaction{},
-				Page:       query.Page,
-				Limit:      query.Limit,
-				Total:      0,
-				TotalPages: 0,
-			}, nil
+			return EmptyPaginatedResponse[transaction.Transaction](query), nil
 		}
 		return nil, fmt.Errorf("failed to collect rows from table:transactions for user_id=%s: %w", userID, err)
 	}
 
-	return &model.PaginatedResponse[transaction.Transaction]{
-		Data:       transactions,
-		Page:       query.Page,
-		Limit:      query.Limit,
-		Total:      total,
-		TotalPages: (total + query.Limit - 1) / query.Limit,
-	}, nil
+	return NewPaginatedResponse(transactions, query, total), nil
 }
 
 func (r *TransactionRepo) Create(ctx context.Context, t *transaction.Transaction) error {
@@ -314,27 +317,4 @@ func (r *TransactionRepo) Summary(ctx context.Context, userID string, month time
 	}
 
 	return summary, nil
-}
-
-func ensureTransactionSortColumn(sort *string) string {
-	allowed := map[string]bool{
-		"amount_minor": true,
-		"currency":     true,
-		"occurred_at":  true,
-		"created_at":   true,
-	}
-	if sort != nil && allowed[*sort] {
-		return *sort
-	}
-	return "occurred_at"
-}
-
-func ensureSortOrder(order *string) string {
-	if order != nil {
-		o := strings.ToLower(*order)
-		if o == "asc" || o == "desc" {
-			return o
-		}
-	}
-	return "desc"
 }
