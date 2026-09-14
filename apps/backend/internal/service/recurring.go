@@ -2,154 +2,183 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/omar-shahieen/moneyflow/internal/domain"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
-	"github.com/omar-shahieen/moneyflow/internal/domain/ports"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/recurring"
+	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type RecurringRuleService struct {
-	repo            ports.RecurringRuleRepository
-	categoryRepo    ports.CategoryRepository
-	transactionRepo ports.TransactionRepository
-	planGuard       ports.PlanGuard
+	server          *server.Server
+	recurringRepo   *repository.RecurringRuleRepo
+	categoryRepo    *repository.CategoryRepo
+	transactionRepo *repository.TransactionRepo
 }
 
-func NewRecurringRuleService(
-	repo ports.RecurringRuleRepository,
-	categoryRepo ports.CategoryRepository,
-	transactionRepo ports.TransactionRepository,
-	planGuard ports.PlanGuard,
-) *RecurringRuleService {
+func NewRecurringRuleService(server *server.Server, recurringRepo *repository.RecurringRuleRepo, categoryRepo *repository.CategoryRepo, transactionRepo *repository.TransactionRepo) *RecurringRuleService {
 	return &RecurringRuleService{
-		repo:            repo,
+		server:          server,
+		recurringRepo:   recurringRepo,
 		categoryRepo:    categoryRepo,
 		transactionRepo: transactionRepo,
-		planGuard:       planGuard,
 	}
 }
 
-func (s *RecurringRuleService) List(ctx context.Context, userID string) ([]model.RecurringRule, error) {
-	return s.repo.List(ctx, userID)
-}
-
-func (s *RecurringRuleService) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.RecurringRule, error) {
-	rule, err := s.repo.GetByID(ctx, id, userID)
+func (s *RecurringRuleService) GetRecurringRules(ctx context.Context, userID string, query *recurring.ListRecurringRulesRequest) (*model.PaginatedResponse[recurring.RecurringRule], error) {
+	rules, err := s.recurringRepo.List(ctx, userID, query.ToListQuery())
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
+		s.server.Logger.Error().Err(err).Msg("failed to fetch recurring rules")
 		return nil, err
 	}
+
+	return rules, nil
+}
+
+func (s *RecurringRuleService) GetRecurringRuleByID(ctx context.Context, userID string, ruleID uuid.UUID) (*recurring.RecurringRule, error) {
+	rule, err := s.recurringRepo.GetByID(ctx, ruleID, userID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch recurring rule by ID")
+		return nil, err
+	}
+
 	return rule, nil
 }
 
-type CreateRecurringRuleInput struct {
-	CategoryID  uuid.UUID
-	AmountMinor int64
-	Currency    string
-	Frequency   model.RecurringFrequency
-	NextRunDate time.Time
-	EndDate     *time.Time
-}
-
-func (s *RecurringRuleService) Create(ctx context.Context, userID string, input CreateRecurringRuleInput) (*model.RecurringRule, error) {
-	if input.AmountMinor <= 0 {
-		return nil, domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "amount_minor must be positive")
+func (s *RecurringRuleService) CreateRecurringRule(ctx context.Context, userID string, payload *recurring.CreateRecurringRuleRequest) (*recurring.RecurringRule, error) {
+	categoryID, err := uuid.Parse(payload.CategoryID)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid category_id", false, nil, nil, nil)
 	}
 
-	if input.Frequency != model.RecurringFrequencyWeekly && input.Frequency != model.RecurringFrequencyMonthly {
-		return nil, domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "frequency must be 'weekly' or 'monthly'")
+	nextRunDate, err := time.Parse("2006-01-02", payload.NextRunDate)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid next_run_date format", false, nil, nil, nil)
 	}
 
-	if _, err := s.categoryRepo.GetByID(ctx, input.CategoryID, userID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
-		return nil, err
+	if _, err := s.categoryRepo.GetByID(ctx, categoryID, userID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("category not found")
+		return nil, errs.NewNotFoundError("resource not found", false, nil)
 	}
 
-	rule := &model.RecurringRule{
+	currency := payload.Currency
+	if currency == "" {
+		currency = "USD"
+	}
+
+	rule := &recurring.RecurringRule{
 		ID:          uuid.New(),
 		UserID:      userID,
-		CategoryID:  input.CategoryID,
-		AmountMinor: input.AmountMinor,
-		Currency:    input.Currency,
-		Frequency:   input.Frequency,
-		NextRunDate: input.NextRunDate,
-		EndDate:     input.EndDate,
+		CategoryID:  categoryID,
+		AmountMinor: payload.AmountMinor,
+		Currency:    currency,
+		Frequency:   recurring.RecurringFrequency(payload.Frequency),
+		NextRunDate: nextRunDate,
 	}
 
-	if err := s.repo.Create(ctx, rule); err != nil {
+	if payload.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", payload.EndDate)
+		if err == nil {
+			rule.EndDate = &endDate
+		}
+	}
+
+	if err := s.recurringRepo.Create(ctx, rule); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to create recurring rule")
 		return nil, err
 	}
+
+	s.server.Logger.Info().
+		Str("event", "recurring_rule_created").
+		Str("rule_id", rule.ID.String()).
+		Msg("Recurring rule created successfully")
+
 	return rule, nil
 }
 
-type UpdateRecurringRuleInput struct {
-	CategoryID  uuid.UUID
-	AmountMinor int64
-	Currency    string
-	Frequency   model.RecurringFrequency
-	NextRunDate time.Time
-	EndDate     *time.Time
-}
-
-func (s *RecurringRuleService) Update(ctx context.Context, id uuid.UUID, userID string, input UpdateRecurringRuleInput) (*model.RecurringRule, error) {
-	rule, err := s.repo.GetByID(ctx, id, userID)
+func (s *RecurringRuleService) UpdateRecurringRule(ctx context.Context, userID string, ruleID uuid.UUID, payload *recurring.UpdateRecurringRuleRequest) (*recurring.RecurringRule, error) {
+	rule, err := s.recurringRepo.GetByID(ctx, ruleID, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
+		s.server.Logger.Error().Err(err).Msg("recurring rule not found")
+		return nil, errs.NewNotFoundError("resource not found", false, nil)
+	}
+
+	categoryID, err := uuid.Parse(payload.CategoryID)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid category_id", false, nil, nil, nil)
+	}
+
+	nextRunDate, err := time.Parse("2006-01-02", payload.NextRunDate)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid next_run_date format", false, nil, nil, nil)
+	}
+
+	rule.CategoryID = categoryID
+	rule.AmountMinor = payload.AmountMinor
+	rule.Currency = payload.Currency
+	rule.Frequency = recurring.RecurringFrequency(payload.Frequency)
+	rule.NextRunDate = nextRunDate
+
+	if payload.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", payload.EndDate)
+		if err == nil {
+			rule.EndDate = &endDate
 		}
+	} else {
+		rule.EndDate = nil
+	}
+
+	if err := s.recurringRepo.Update(ctx, rule); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to update recurring rule")
 		return nil, err
 	}
 
-	rule.CategoryID = input.CategoryID
-	rule.AmountMinor = input.AmountMinor
-	rule.Currency = input.Currency
-	rule.Frequency = input.Frequency
-	rule.NextRunDate = input.NextRunDate
-	rule.EndDate = input.EndDate
+	s.server.Logger.Info().
+		Str("event", "recurring_rule_updated").
+		Str("rule_id", rule.ID.String()).
+		Msg("Recurring rule updated successfully")
 
-	if err := s.repo.Update(ctx, rule); err != nil {
-		return nil, err
-	}
 	return rule, nil
 }
 
-func (s *RecurringRuleService) Delete(ctx context.Context, id uuid.UUID, userID string) error {
-	err := s.repo.Delete(ctx, id, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrNotFound
-		}
+func (s *RecurringRuleService) DeleteRecurringRule(ctx context.Context, userID string, ruleID uuid.UUID) error {
+	if err := s.recurringRepo.Delete(ctx, ruleID, userID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to delete recurring rule")
 		return err
 	}
+
+	s.server.Logger.Info().
+		Str("event", "recurring_rule_deleted").
+		Str("rule_id", ruleID.String()).
+		Msg("Recurring rule deleted successfully")
+
 	return nil
 }
 
 func (s *RecurringRuleService) ProcessDueRules(ctx context.Context) error {
-	rules, err := s.repo.GetDueRules(ctx, time.Now())
+	rules, err := s.recurringRepo.GetDueRules(ctx, time.Now())
 	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch due rules")
 		return err
 	}
 
 	for _, rule := range rules {
 		if err := s.processRule(ctx, &rule); err != nil {
+			s.server.Logger.Error().Err(err).Str("rule_id", rule.ID.String()).Msg("failed to process rule")
 			continue
 		}
 	}
 	return nil
 }
 
-func (s *RecurringRuleService) processRule(ctx context.Context, rule *model.RecurringRule) error {
+func (s *RecurringRuleService) processRule(ctx context.Context, rule *recurring.RecurringRule) error {
 	occurrenceDate := rule.NextRunDate
 
-	generated, err := s.repo.IsOccurrenceGenerated(ctx, rule.ID, occurrenceDate)
+	generated, err := s.recurringRepo.IsOccurrenceGenerated(ctx, rule.ID, occurrenceDate)
 	if err != nil {
 		return err
 	}
@@ -157,7 +186,7 @@ func (s *RecurringRuleService) processRule(ctx context.Context, rule *model.Recu
 		return s.advanceNextRunDate(ctx, rule)
 	}
 
-	t := &model.Transaction{
+	t := &transaction.Transaction{
 		ID:          uuid.New(),
 		UserID:      rule.UserID,
 		CategoryID:  rule.CategoryID,
@@ -171,19 +200,19 @@ func (s *RecurringRuleService) processRule(ctx context.Context, rule *model.Recu
 		return err
 	}
 
-	if err := s.repo.MarkOccurrenceGenerated(ctx, rule.ID, occurrenceDate); err != nil {
+	if err := s.recurringRepo.MarkOccurrenceGenerated(ctx, rule.ID, occurrenceDate); err != nil {
 		return err
 	}
 
 	return s.advanceNextRunDate(ctx, rule)
 }
 
-func (s *RecurringRuleService) advanceNextRunDate(ctx context.Context, rule *model.RecurringRule) error {
+func (s *RecurringRuleService) advanceNextRunDate(ctx context.Context, rule *recurring.RecurringRule) error {
 	var nextRun time.Time
 	switch rule.Frequency {
-	case model.RecurringFrequencyWeekly:
+	case recurring.RecurringFrequencyWeekly:
 		nextRun = rule.NextRunDate.AddDate(0, 0, 7)
-	case model.RecurringFrequencyMonthly:
+	case recurring.RecurringFrequencyMonthly:
 		nextRun = rule.NextRunDate.AddDate(0, 1, 0)
 	default:
 		return nil
@@ -193,5 +222,5 @@ func (s *RecurringRuleService) advanceNextRunDate(ctx context.Context, rule *mod
 		return nil
 	}
 
-	return s.repo.UpdateNextRunDate(ctx, rule.ID, nextRun)
+	return s.recurringRepo.UpdateNextRunDate(ctx, rule.ID, nextRun)
 }

@@ -4,16 +4,20 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type SubscriptionHandler struct {
-	pool *pgxpool.Pool
+	Handler
+	server *server.Server
 }
 
-func NewSubscriptionHandler(pool *pgxpool.Pool) *SubscriptionHandler {
-	return &SubscriptionHandler{pool: pool}
+func NewSubscriptionHandler(s *server.Server) *SubscriptionHandler {
+	return &SubscriptionHandler{
+		Handler: NewHandler(s),
+		server:  s,
+	}
 }
 
 type SubscriptionResponse struct {
@@ -28,29 +32,31 @@ type SubscriptionResponse struct {
 }
 
 func (h *SubscriptionHandler) Get(c *gin.Context) {
-	userID := GetUserID(c)
-	if userID == "" {
-		RespondError(c, ErrUnauthorized)
-		return
-	}
+	Handle(
+		h.Handler,
+		func(c *gin.Context, req *EmptyRequest) (*SubscriptionResponse, error) {
+			userID := GetUserID(c)
 
-	sub, err := repository.EnsureFreeSubscription(c.Request.Context(), h.pool, userID)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
+			sub, err := repository.EnsureFreeSubscription(c.Request.Context(), h.server, userID)
+			if err != nil {
+				return nil, err
+			}
 
-	resp := SubscriptionResponse{
-		ID:     sub.ID.String(),
-		UserID: sub.UserID,
-		Plan:   string(sub.Plan),
-		Status: string(sub.Status),
-	}
+			resp := &SubscriptionResponse{
+				ID:     sub.ID.String(),
+				UserID: sub.UserID,
+				Plan:   string(sub.Plan),
+				Status: string(sub.Status),
+			}
 
-	if sub.CurrentPeriodEnd != nil {
-		s := sub.CurrentPeriodEnd.Format("2006-01-02T15:04:05Z")
-		resp.CurrentPeriodEnd = &s
-	}
+			if sub.CurrentPeriodEnd != nil {
+				s := sub.CurrentPeriodEnd.Format("2006-01-02T15:04:05Z")
+				resp.CurrentPeriodEnd = &s
+			}
 
-	RespondJSON(c, http.StatusOK, resp)
+			return resp, nil
+		},
+		http.StatusOK,
+		&EmptyRequest{},
+	)(c)
 }

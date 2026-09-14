@@ -2,89 +2,173 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
+	"github.com/jackc/pgx/v5"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/report"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type ReportRepo struct {
-	pool *pgxpool.Pool
+	server *server.Server
 }
 
-func NewReportRepository(pool *pgxpool.Pool) *ReportRepo {
-	return &ReportRepo{pool: pool}
+func NewReportRepository(server *server.Server) *ReportRepo {
+	return &ReportRepo{server: server}
 }
 
-func (r *ReportRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.Report, error) {
-	var rep model.Report
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
-		 FROM reports
-		 WHERE id = $1 AND user_id = $2`,
-		id, userID,
-	).Scan(&rep.ID, &rep.UserID, &rep.Format, &rep.PeriodStart, &rep.PeriodEnd,
-		&rep.Status, &rep.StorageKey, &rep.CreatedAt, &rep.CompletedAt)
+func (r *ReportRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (*report.Report, error) {
+	stmt := `
+		SELECT
+			id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
+		FROM
+			reports
+		WHERE
+			id = @id
+			AND user_id = @user_id
+	`
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, pgx.NamedArgs{
+		"id":      id,
+		"user_id": userID,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute get report by id query for report_id=%s user_id=%s: %w", id.String(), userID, err)
 	}
+
+	rep, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[report.Report])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect row from table:reports for report_id=%s user_id=%s: %w", id.String(), userID, err)
+	}
+
 	return &rep, nil
 }
 
-func (r *ReportRepo) List(ctx context.Context, userID string, limit int) ([]model.Report, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
-		 FROM reports
-		 WHERE user_id = $1
-		 ORDER BY created_at DESC
-		 LIMIT $2`,
-		userID, limit,
-	)
+func (r *ReportRepo) List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[report.Report], error) {
+	stmt := `
+		SELECT
+			id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
+		FROM
+			reports
+		WHERE
+			user_id = @user_id
+	`
+
+	args := pgx.NamedArgs{
+		"user_id": userID,
+	}
+
+	sortColumn := "created_at"
+	sortOrder := "desc"
+	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
+
+	stmt += ` LIMIT @limit OFFSET @offset`
+	args["limit"] = query.Limit
+	args["offset"] = (query.Page - 1) * query.Limit
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute get reports query for user_id=%s: %w", userID, err)
 	}
-	defer rows.Close()
 
-	var reports []model.Report
-	for rows.Next() {
-		var rep model.Report
-		if err := rows.Scan(&rep.ID, &rep.UserID, &rep.Format, &rep.PeriodStart, &rep.PeriodEnd,
-			&rep.Status, &rep.StorageKey, &rep.CreatedAt, &rep.CompletedAt); err != nil {
-			return nil, err
+	reports, err := pgx.CollectRows(rows, pgx.RowToStructByName[report.Report])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &model.PaginatedResponse[report.Report]{
+				Data:       []report.Report{},
+				Page:       query.Page,
+				Limit:      query.Limit,
+				Total:      0,
+				TotalPages: 0,
+			}, nil
 		}
-		reports = append(reports, rep)
+		return nil, fmt.Errorf("failed to collect rows from table:reports for user_id=%s: %w", userID, err)
 	}
-	return reports, rows.Err()
+
+	countStmt := `
+		SELECT
+			COUNT(*)
+		FROM
+			reports
+		WHERE
+			user_id = @user_id
+	`
+
+	var total int
+	err = r.server.DB.Pool.QueryRow(ctx, countStmt, pgx.NamedArgs{"user_id": userID}).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total count of reports for user_id=%s: %w", userID, err)
+	}
+
+	return &model.PaginatedResponse[report.Report]{
+		Data:       reports,
+		Page:       query.Page,
+		Limit:      query.Limit,
+		Total:      total,
+		TotalPages: (total + query.Limit - 1) / query.Limit,
+	}, nil
 }
 
-func (r *ReportRepo) Create(ctx context.Context, report *model.Report) error {
-	err := r.pool.QueryRow(ctx,
-		`INSERT INTO reports (id, user_id, format, period_start, period_end, status)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING created_at`,
-		report.ID, report.UserID, report.Format, report.PeriodStart, report.PeriodEnd, report.Status,
-	).Scan(&report.CreatedAt)
-	return err
+func (r *ReportRepo) Create(ctx context.Context, rep *report.Report) error {
+	stmt := `
+		INSERT INTO
+			reports (id, user_id, format, period_start, period_end, status)
+		VALUES
+			(@id, @user_id, @format, @period_start, @period_end, @status)
+		RETURNING
+			created_at
+	`
+
+	err := r.server.DB.Pool.QueryRow(ctx, stmt, pgx.NamedArgs{
+		"id":           rep.ID,
+		"user_id":      rep.UserID,
+		"format":       rep.Format,
+		"period_start": rep.PeriodStart,
+		"period_end":   rep.PeriodEnd,
+		"status":       rep.Status,
+	}).Scan(&rep.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to execute create report query for user_id=%s: %w", rep.UserID, err)
+	}
+
+	return nil
 }
 
-func (r *ReportRepo) Update(ctx context.Context, report *model.Report) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE reports
-		 SET status = $1, storage_key = $2, completed_at = $3
-		 WHERE id = $4`,
-		report.Status, report.StorageKey, report.CompletedAt, report.ID,
-	)
-	return err
+func (r *ReportRepo) Update(ctx context.Context, rep *report.Report) error {
+	stmt := `
+		UPDATE reports
+		SET status = @status, storage_key = @storage_key, completed_at = @completed_at
+		WHERE id = @id
+	`
+
+	tag, err := r.server.DB.Pool.Exec(ctx, stmt, pgx.NamedArgs{
+		"id":           rep.ID,
+		"status":       rep.Status,
+		"storage_key":  rep.StorageKey,
+		"completed_at": rep.CompletedAt,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to execute update report query for report_id=%s: %w", rep.ID.String(), err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("report not found")
+	}
+
+	return nil
 }
 
 func (r *ReportRepo) CountByUser(ctx context.Context, userID string) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM reports WHERE user_id = $1`,
-		userID,
+	err := r.server.DB.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM reports WHERE user_id = @user_id`,
+		pgx.NamedArgs{"user_id": userID},
 	).Scan(&count)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to count reports for user_id=%s: %w", userID, err)
 	}
 	return count, nil
 }

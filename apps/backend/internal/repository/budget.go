@@ -2,119 +2,216 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/budget"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type BudgetRepo struct {
-	pool *pgxpool.Pool
+	server *server.Server
 }
 
-func NewBudgetRepository(pool *pgxpool.Pool) *BudgetRepo {
-	return &BudgetRepo{pool: pool}
+func NewBudgetRepository(server *server.Server) *BudgetRepo {
+	return &BudgetRepo{server: server}
 }
 
-func (r *BudgetRepo) GetByID(ctx context.Context, id uuid.UUID) (*model.Budget, error) {
-	var b model.Budget
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, category_id, monthly_limit_minor, currency, created_at
-		 FROM budgets WHERE id = $1`,
-		id,
-	).Scan(&b.ID, &b.CategoryID, &b.MonthlyLimitMinor, &b.Currency, &b.CreatedAt)
+func (r *BudgetRepo) GetByID(ctx context.Context, id uuid.UUID) (*budget.Budget, error) {
+	stmt := `
+		SELECT
+			id, category_id, monthly_limit_minor, currency, created_at
+		FROM
+			budgets
+		WHERE
+			id = @id
+	`
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, pgx.NamedArgs{
+		"id": id,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute get budget by id query for budget_id=%s: %w", id.String(), err)
 	}
+
+	b, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[budget.Budget])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect row from table:budgets for budget_id=%s: %w", id.String(), err)
+	}
+
 	return &b, nil
 }
 
-func (r *BudgetRepo) ListByUser(ctx context.Context, userID string) ([]model.BudgetWithMembers, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT b.id, b.category_id, b.monthly_limit_minor, b.currency, b.created_at
-		 FROM budgets b
-		 JOIN budget_members bm ON b.id = bm.budget_id
-		 WHERE bm.user_id = $1
-		 ORDER BY b.created_at DESC`,
-		userID,
-	)
-	if err != nil {
-		return nil, err
+func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[budget.BudgetWithMembers], error) {
+	stmt := `
+		SELECT
+			b.id, b.category_id, b.monthly_limit_minor, b.currency, b.created_at
+		FROM
+			budgets b
+		JOIN
+			budget_members bm ON b.id = bm.budget_id
+		WHERE
+			bm.user_id = @user_id
+	`
+
+	args := pgx.NamedArgs{
+		"user_id": userID,
 	}
-	defer rows.Close()
 
-	var budgets []model.BudgetWithMembers
-	for rows.Next() {
-		var bw model.BudgetWithMembers
-		if err := rows.Scan(&bw.ID, &bw.CategoryID, &bw.MonthlyLimitMinor, &bw.Currency, &bw.CreatedAt); err != nil {
-			return nil, err
+	sortColumn := "b.created_at"
+	sortOrder := "desc"
+	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
+
+	stmt += ` LIMIT @limit OFFSET @offset`
+	args["limit"] = query.Limit
+	args["offset"] = (query.Page - 1) * query.Limit
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute get budgets query for user_id=%s: %w", userID, err)
+	}
+
+	budgets, err := pgx.CollectRows(rows, pgx.RowToStructByName[budget.Budget])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return &model.PaginatedResponse[budget.BudgetWithMembers]{
+				Data:       []budget.BudgetWithMembers{},
+				Page:       query.Page,
+				Limit:      query.Limit,
+				Total:      0,
+				TotalPages: 0,
+			}, nil
 		}
+		return nil, fmt.Errorf("failed to collect rows from table:budgets for user_id=%s: %w", userID, err)
+	}
 
-		memberRows, err := r.pool.Query(ctx,
-			`SELECT budget_id, user_id, role FROM budget_members WHERE budget_id = $1`,
-			bw.ID,
+	var budgetsWithMembers []budget.BudgetWithMembers
+	for _, b := range budgets {
+		memberRows, err := r.server.DB.Pool.Query(ctx,
+			`SELECT budget_id, user_id, role FROM budget_members WHERE budget_id = @budget_id`,
+			pgx.NamedArgs{"budget_id": b.ID},
 		)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get members for budget_id=%s: %w", b.ID.String(), err)
 		}
 
-		for memberRows.Next() {
-			var m model.BudgetMember
-			if err := memberRows.Scan(&m.BudgetID, &m.UserID, &m.Role); err != nil {
-				memberRows.Close()
-				return nil, err
-			}
-			bw.Members = append(bw.Members, m)
+		members, err := pgx.CollectRows(memberRows, pgx.RowToStructByName[budget.BudgetMember])
+		if err != nil {
+			return nil, fmt.Errorf("failed to collect budget members for budget_id=%s: %w", b.ID.String(), err)
 		}
-		memberRows.Close()
 
-		budgets = append(budgets, bw)
+		budgetsWithMembers = append(budgetsWithMembers, budget.BudgetWithMembers{
+			Budget:  b,
+			Members: members,
+		})
 	}
-	return budgets, rows.Err()
+
+	countStmt := `
+		SELECT
+			COUNT(DISTINCT b.id)
+		FROM
+			budgets b
+		JOIN
+			budget_members bm ON b.id = bm.budget_id
+		WHERE
+			bm.user_id = @user_id
+	`
+
+	var total int
+	err = r.server.DB.Pool.QueryRow(ctx, countStmt, pgx.NamedArgs{"user_id": userID}).Scan(&total)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get total count of budgets for user_id=%s: %w", userID, err)
+	}
+
+	return &model.PaginatedResponse[budget.BudgetWithMembers]{
+		Data:       budgetsWithMembers,
+		Page:       query.Page,
+		Limit:      query.Limit,
+		Total:      total,
+		TotalPages: (total + query.Limit - 1) / query.Limit,
+	}, nil
 }
 
-func (r *BudgetRepo) Create(ctx context.Context, budget *model.Budget) error {
-	err := r.pool.QueryRow(ctx,
-		`INSERT INTO budgets (id, category_id, monthly_limit_minor, currency)
-		 VALUES ($1, $2, $3, $4)
-		 RETURNING created_at`,
-		budget.ID, budget.CategoryID, budget.MonthlyLimitMinor, budget.Currency,
-	).Scan(&budget.CreatedAt)
-	return err
+func (r *BudgetRepo) Create(ctx context.Context, b *budget.Budget) error {
+	stmt := `
+		INSERT INTO
+			budgets (id, category_id, monthly_limit_minor, currency)
+		VALUES
+			(@id, @category_id, @monthly_limit_minor, @currency)
+		RETURNING
+			created_at
+	`
+
+	err := r.server.DB.Pool.QueryRow(ctx, stmt, pgx.NamedArgs{
+		"id":                  b.ID,
+		"category_id":         b.CategoryID,
+		"monthly_limit_minor": b.MonthlyLimitMinor,
+		"currency":            b.Currency,
+	}).Scan(&b.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to execute create budget query for category_id=%s: %w", b.CategoryID.String(), err)
+	}
+
+	return nil
 }
 
-func (r *BudgetRepo) Update(ctx context.Context, budget *model.Budget) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE budgets SET category_id = $1, monthly_limit_minor = $2, currency = $3
-		 WHERE id = $4`,
-		budget.CategoryID, budget.MonthlyLimitMinor, budget.Currency, budget.ID,
-	)
-	return err
+func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
+	stmt := `
+		UPDATE budgets
+		SET category_id = @category_id, monthly_limit_minor = @monthly_limit_minor, currency = @currency
+		WHERE id = @id
+	`
+
+	tag, err := r.server.DB.Pool.Exec(ctx, stmt, pgx.NamedArgs{
+		"id":                  b.ID,
+		"category_id":         b.CategoryID,
+		"monthly_limit_minor": b.MonthlyLimitMinor,
+		"currency":            b.Currency,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to execute update budget query for budget_id=%s: %w", b.ID.String(), err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("budget not found")
+	}
+
+	return nil
 }
 
 func (r *BudgetRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM budgets WHERE id = $1`, id)
+	result, err := r.server.DB.Pool.Exec(ctx, `
+		DELETE FROM budgets
+		WHERE id = @id
+	`, pgx.NamedArgs{"id": id})
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete budget: %w", err)
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("budget not found")
 	}
+
 	return nil
 }
 
 func (r *BudgetRepo) CountByUser(ctx context.Context, userID string) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx,
+	err := r.server.DB.Pool.QueryRow(ctx,
 		`SELECT COUNT(DISTINCT b.id)
 		 FROM budgets b
 		 JOIN budget_members bm ON b.id = bm.budget_id
-		 WHERE bm.user_id = $1 AND bm.role = 'owner'`,
-		userID,
+		 WHERE bm.user_id = @user_id AND bm.role = 'owner'`,
+		pgx.NamedArgs{"user_id": userID},
 	).Scan(&count)
-	return count, err
+	if err != nil {
+		return 0, fmt.Errorf("failed to count budgets for user_id=%s: %w", userID, err)
+	}
+	return count, nil
 }
 
 func (r *BudgetRepo) GetUsage(ctx context.Context, budgetID uuid.UUID, month time.Time) (int64, error) {
@@ -122,89 +219,132 @@ func (r *BudgetRepo) GetUsage(ctx context.Context, budgetID uuid.UUID, month tim
 	endOfMonth := startOfMonth.AddDate(0, 1, 0)
 
 	var usage int64
-	err := r.pool.QueryRow(ctx,
+	err := r.server.DB.Pool.QueryRow(ctx,
 		`SELECT COALESCE(SUM(t.amount_minor), 0)
 		 FROM transactions t
 		 JOIN budgets b ON t.category_id = b.category_id
-		 WHERE b.id = $1
-		   AND t.user_id IN (SELECT user_id FROM budget_members WHERE budget_id = $1)
-		   AND t.occurred_at >= $2 AND t.occurred_at < $3`,
-		budgetID, startOfMonth, endOfMonth,
+		 WHERE b.id = @budget_id
+		   AND t.user_id IN (SELECT user_id FROM budget_members WHERE budget_id = @budget_id)
+		   AND t.occurred_at >= @start_date AND t.occurred_at < @end_date`,
+		pgx.NamedArgs{
+			"budget_id":  budgetID,
+			"start_date": startOfMonth,
+			"end_date":   endOfMonth,
+		},
 	).Scan(&usage)
-	return usage, err
+	if err != nil {
+		return 0, fmt.Errorf("failed to get budget usage for budget_id=%s: %w", budgetID.String(), err)
+	}
+	return usage, nil
 }
 
 type BudgetMemberRepo struct {
-	pool *pgxpool.Pool
+	server *server.Server
 }
 
-func NewBudgetMemberRepository(pool *pgxpool.Pool) *BudgetMemberRepo {
-	return &BudgetMemberRepo{pool: pool}
+func NewBudgetMemberRepository(server *server.Server) *BudgetMemberRepo {
+	return &BudgetMemberRepo{server: server}
 }
 
-func (r *BudgetMemberRepo) Get(ctx context.Context, budgetID uuid.UUID, userID string) (*model.BudgetMember, error) {
-	var m model.BudgetMember
-	err := r.pool.QueryRow(ctx,
-		`SELECT budget_id, user_id, role FROM budget_members
-		 WHERE budget_id = $1 AND user_id = $2`,
-		budgetID, userID,
-	).Scan(&m.BudgetID, &m.UserID, &m.Role)
+func (r *BudgetMemberRepo) Get(ctx context.Context, budgetID uuid.UUID, userID string) (*budget.BudgetMember, error) {
+	stmt := `
+		SELECT
+			budget_id, user_id, role
+		FROM
+			budget_members
+		WHERE
+			budget_id = @budget_id
+			AND user_id = @user_id
+	`
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, pgx.NamedArgs{
+		"budget_id": budgetID,
+		"user_id":   userID,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get budget member for budget_id=%s user_id=%s: %w", budgetID.String(), userID, err)
 	}
+
+	m, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[budget.BudgetMember])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect budget member for budget_id=%s user_id=%s: %w", budgetID.String(), userID, err)
+	}
+
 	return &m, nil
 }
 
-func (r *BudgetMemberRepo) ListByBudget(ctx context.Context, budgetID uuid.UUID) ([]model.BudgetMember, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT budget_id, user_id, role FROM budget_members WHERE budget_id = $1`,
-		budgetID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+func (r *BudgetMemberRepo) ListByBudget(ctx context.Context, budgetID uuid.UUID) ([]budget.BudgetMember, error) {
+	stmt := `
+		SELECT
+			budget_id, user_id, role
+		FROM
+			budget_members
+		WHERE
+			budget_id = @budget_id
+	`
 
-	var members []model.BudgetMember
-	for rows.Next() {
-		var m model.BudgetMember
-		if err := rows.Scan(&m.BudgetID, &m.UserID, &m.Role); err != nil {
-			return nil, err
-		}
-		members = append(members, m)
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, pgx.NamedArgs{
+		"budget_id": budgetID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list budget members for budget_id=%s: %w", budgetID.String(), err)
 	}
-	return members, rows.Err()
+
+	members, err := pgx.CollectRows(rows, pgx.RowToStructByName[budget.BudgetMember])
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return []budget.BudgetMember{}, nil
+		}
+		return nil, fmt.Errorf("failed to collect budget members for budget_id=%s: %w", budgetID.String(), err)
+	}
+
+	return members, nil
 }
 
-func (r *BudgetMemberRepo) Add(ctx context.Context, member *model.BudgetMember) error {
-	_, err := r.pool.Exec(ctx,
+func (r *BudgetMemberRepo) Add(ctx context.Context, m *budget.BudgetMember) error {
+	_, err := r.server.DB.Pool.Exec(ctx,
 		`INSERT INTO budget_members (budget_id, user_id, role)
-		 VALUES ($1, $2, $3)
+		 VALUES (@budget_id, @user_id, @role)
 		 ON CONFLICT (budget_id, user_id) DO UPDATE SET role = EXCLUDED.role`,
-		member.BudgetID, member.UserID, member.Role,
+		pgx.NamedArgs{
+			"budget_id": m.BudgetID,
+			"user_id":   m.UserID,
+			"role":      m.Role,
+		},
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("failed to add budget member for budget_id=%s user_id=%s: %w", m.BudgetID.String(), m.UserID, err)
+	}
+	return nil
 }
 
 func (r *BudgetMemberRepo) Remove(ctx context.Context, budgetID uuid.UUID, userID string) error {
-	tag, err := r.pool.Exec(ctx,
-		`DELETE FROM budget_members WHERE budget_id = $1 AND user_id = $2`,
-		budgetID, userID,
+	result, err := r.server.DB.Pool.Exec(ctx,
+		`DELETE FROM budget_members WHERE budget_id = @budget_id AND user_id = @user_id`,
+		pgx.NamedArgs{
+			"budget_id": budgetID,
+			"user_id":   userID,
+		},
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to remove budget member for budget_id=%s user_id=%s: %w", budgetID.String(), userID, err)
 	}
-	if tag.RowsAffected() == 0 {
-		return pgx.ErrNoRows
+
+	if result.RowsAffected() == 0 {
+		return fmt.Errorf("budget member not found")
 	}
+
 	return nil
 }
 
 func (r *BudgetMemberRepo) CountByBudget(ctx context.Context, budgetID uuid.UUID) (int, error) {
 	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM budget_members WHERE budget_id = $1`,
-		budgetID,
+	err := r.server.DB.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM budget_members WHERE budget_id = @budget_id`,
+		pgx.NamedArgs{"budget_id": budgetID},
 	).Scan(&count)
-	return count, err
+	if err != nil {
+		return 0, fmt.Errorf("failed to count budget members for budget_id=%s: %w", budgetID.String(), err)
+	}
+	return count, nil
 }

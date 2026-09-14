@@ -7,62 +7,58 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
-	"github.com/omar-shahieen/moneyflow/internal/domain/ports"
+	"github.com/omar-shahieen/moneyflow/internal/model/imports"
+	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type ImportService struct {
-	repo            ports.ImportRepository
-	transactionRepo ports.TransactionRepository
-	categoryRepo    ports.CategoryRepository
-	planGuard       ports.PlanGuard
-	pool            *pgxpool.Pool
+	server          *server.Server
+	importRepo      *repository.ImportRepo
+	transactionRepo *repository.TransactionRepo
+	categoryRepo    *repository.CategoryRepo
 }
 
-func NewImportService(
-	repo ports.ImportRepository,
-	transactionRepo ports.TransactionRepository,
-	categoryRepo ports.CategoryRepository,
-	planGuard ports.PlanGuard,
-	pool *pgxpool.Pool,
-) *ImportService {
+func NewImportService(server *server.Server, importRepo *repository.ImportRepo, transactionRepo *repository.TransactionRepo, categoryRepo *repository.CategoryRepo) *ImportService {
 	return &ImportService{
-		repo:            repo,
+		server:          server,
+		importRepo:      importRepo,
 		transactionRepo: transactionRepo,
 		categoryRepo:    categoryRepo,
-		planGuard:       planGuard,
-		pool:            pool,
 	}
 }
 
-func (s *ImportService) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.Import, error) {
-	return s.repo.GetByID(ctx, id, userID)
-}
-
-type CreateImportInput struct {
-	TotalRows int
-}
-
-func (s *ImportService) Create(ctx context.Context, userID string, input CreateImportInput) (*model.Import, error) {
-	if s.planGuard != nil {
-		if err := s.planGuard.CheckCSVImportLimit(ctx, userID, input.TotalRows); err != nil {
-			return nil, err
-		}
+func (s *ImportService) GetImportByID(ctx context.Context, userID string, importID uuid.UUID) (*imports.Import, error) {
+	imp, err := s.importRepo.GetByID(ctx, importID, userID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch import by ID")
+		return nil, err
 	}
 
-	imp := &model.Import{
+	return imp, nil
+}
+
+func (s *ImportService) CreateImport(ctx context.Context, userID string, totalRows int) (*imports.Import, error) {
+	imp := &imports.Import{
 		ID:          uuid.New(),
 		UserID:      userID,
-		Status:      model.ImportStatusPending,
-		TotalRows:   input.TotalRows,
+		Status:      imports.ImportStatusPending,
+		TotalRows:   totalRows,
 		SuccessRows: 0,
 		FailedRows:  []byte("[]"),
 	}
 
-	if err := s.repo.Create(ctx, imp); err != nil {
+	if err := s.importRepo.Create(ctx, imp); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to create import")
 		return nil, err
 	}
+
+	s.server.Logger.Info().
+		Str("event", "import_created").
+		Str("import_id", imp.ID.String()).
+		Msg("Import created successfully")
+
 	return imp, nil
 }
 
@@ -75,22 +71,22 @@ type CSVRow struct {
 }
 
 func (s *ImportService) ProcessImport(ctx context.Context, importID uuid.UUID, userID string, rows []CSVRow) error {
-	imp, err := s.repo.GetByID(ctx, importID, userID)
+	imp, err := s.importRepo.GetByID(ctx, importID, userID)
 	if err != nil {
 		return err
 	}
 
-	imp.Status = model.ImportStatusProcessing
-	if err := s.repo.Update(ctx, imp); err != nil {
+	imp.Status = imports.ImportStatusProcessing
+	if err := s.importRepo.Update(ctx, imp); err != nil {
 		return err
 	}
 
-	var failedRows []model.ImportRowError
+	var failedRows []imports.ImportRowError
 	successCount := 0
 
 	for i, row := range rows {
 		if err := s.processRow(ctx, userID, row); err != nil {
-			failedRows = append(failedRows, model.ImportRowError{
+			failedRows = append(failedRows, imports.ImportRowError{
 				Row:    i + 1,
 				Reason: err.Error(),
 			})
@@ -103,14 +99,21 @@ func (s *ImportService) ProcessImport(ctx context.Context, importID uuid.UUID, u
 	imp.SuccessRows = successCount
 	imp.FailedRows = failedJSON
 	imp.TotalRows = len(rows)
+	imp.Status = imports.ImportStatusCompleted
 
-	if len(failedRows) > 0 {
-		imp.Status = model.ImportStatusCompleted
-	} else {
-		imp.Status = model.ImportStatusCompleted
+	if err := s.importRepo.Update(ctx, imp); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to update import status")
+		return err
 	}
 
-	return s.repo.Update(ctx, imp)
+	s.server.Logger.Info().
+		Str("event", "import_completed").
+		Str("import_id", importID.String()).
+		Int("success", successCount).
+		Int("failed", len(failedRows)).
+		Msg("Import processing completed")
+
+	return nil
 }
 
 func (s *ImportService) processRow(ctx context.Context, userID string, row CSVRow) error {
@@ -122,8 +125,9 @@ func (s *ImportService) processRow(ctx context.Context, userID string, row CSVRo
 		return fmt.Errorf("amount must be non-zero")
 	}
 
+	pool := s.server.DB.Pool
 	var categoryID uuid.UUID
-	err := s.pool.QueryRow(ctx,
+	err := pool.QueryRow(ctx,
 		`SELECT id FROM categories WHERE user_id = $1 AND name = $2 LIMIT 1`,
 		userID, row.CategoryName,
 	).Scan(&categoryID)
@@ -136,7 +140,7 @@ func (s *ImportService) processRow(ctx context.Context, userID string, row CSVRo
 		occurredAt = time.Now()
 	}
 
-	t := &model.Transaction{
+	t := &transaction.Transaction{
 		ID:          uuid.New(),
 		UserID:      userID,
 		CategoryID:  categoryID,

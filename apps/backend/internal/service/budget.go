@@ -2,212 +2,246 @@ package service
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/omar-shahieen/moneyflow/internal/domain"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
-	"github.com/omar-shahieen/moneyflow/internal/domain/ports"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/budget"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type BudgetService struct {
-	repo         ports.BudgetRepository
-	memberRepo   ports.BudgetMemberRepository
-	categoryRepo ports.CategoryRepository
-	planGuard    ports.PlanGuard
+	server       *server.Server
+	budgetRepo   *repository.BudgetRepo
+	memberRepo   *repository.BudgetMemberRepo
+	categoryRepo *repository.CategoryRepo
 }
 
-func NewBudgetService(repo ports.BudgetRepository, memberRepo ports.BudgetMemberRepository, categoryRepo ports.CategoryRepository, planGuard ports.PlanGuard) *BudgetService {
+func NewBudgetService(server *server.Server, budgetRepo *repository.BudgetRepo, memberRepo *repository.BudgetMemberRepo, categoryRepo *repository.CategoryRepo) *BudgetService {
 	return &BudgetService{
-		repo:         repo,
+		server:       server,
+		budgetRepo:   budgetRepo,
 		memberRepo:   memberRepo,
 		categoryRepo: categoryRepo,
-		planGuard:    planGuard,
 	}
 }
 
-func (s *BudgetService) List(ctx context.Context, userID string) ([]model.BudgetWithMembers, error) {
-	return s.repo.ListByUser(ctx, userID)
-}
-
-func (s *BudgetService) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.BudgetWithMembers, error) {
-	budget, err := s.repo.GetByID(ctx, id)
+func (s *BudgetService) GetBudgets(ctx context.Context, userID string, query *budget.ListBudgetsRequest) (*model.PaginatedResponse[budget.BudgetResponse], error) {
+	result, err := s.budgetRepo.ListByUser(ctx, userID, query.ToListQuery())
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
+		s.server.Logger.Error().Err(err).Msg("failed to fetch budgets")
+		return nil, err
+	}
+
+	responses := make([]budget.BudgetResponse, 0, len(result.Data))
+	now := time.Now()
+	for _, b := range result.Data {
+		usage, _ := s.budgetRepo.GetUsage(ctx, b.ID, now)
+		var usagePercent float64
+		if b.MonthlyLimitMinor > 0 {
+			usagePercent = float64(usage) / float64(b.MonthlyLimitMinor) * 100
 		}
-		return nil, err
+		responses = append(responses, budget.BudgetResponse{
+			BudgetWithMembers: b,
+			Usage:             usage,
+			UsagePercent:      usagePercent,
+			Exceeded:          usage > b.MonthlyLimitMinor,
+		})
 	}
 
-	if _, err := s.memberRepo.Get(ctx, id, userID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrForbidden
-		}
-		return nil, err
-	}
-
-	members, err := s.memberRepo.ListByBudget(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	return &model.BudgetWithMembers{
-		Budget:  *budget,
-		Members: members,
+	return &model.PaginatedResponse[budget.BudgetResponse]{
+		Data:       responses,
+		Page:       result.Page,
+		Limit:      result.Limit,
+		Total:      result.Total,
+		TotalPages: result.TotalPages,
 	}, nil
 }
 
-type CreateBudgetInput struct {
-	CategoryID        uuid.UUID
-	MonthlyLimitMinor int64
-	Currency          string
+func (s *BudgetService) GetBudgetByID(ctx context.Context, userID string, budgetID uuid.UUID) (*budget.BudgetResponse, error) {
+	b, err := s.budgetRepo.GetByID(ctx, budgetID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch budget by ID")
+		return nil, errs.NewNotFoundError("resource not found", false, nil)
+	}
+
+	if _, err := s.memberRepo.Get(ctx, budgetID, userID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("user is not a member of this budget")
+		return nil, errs.NewForbiddenError("forbidden", false)
+	}
+
+	members, err := s.memberRepo.ListByBudget(ctx, budgetID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch budget members")
+		return nil, err
+	}
+
+	bw := budget.BudgetWithMembers{
+		Budget:  *b,
+		Members: members,
+	}
+
+	usage, _ := s.budgetRepo.GetUsage(ctx, budgetID, time.Now())
+	var usagePercent float64
+	if bw.MonthlyLimitMinor > 0 {
+		usagePercent = float64(usage) / float64(bw.MonthlyLimitMinor) * 100
+	}
+
+	return &budget.BudgetResponse{
+		BudgetWithMembers: bw,
+		Usage:             usage,
+		UsagePercent:      usagePercent,
+		Exceeded:          usage > bw.MonthlyLimitMinor,
+	}, nil
 }
 
-func (s *BudgetService) Create(ctx context.Context, userID string, input CreateBudgetInput) (*model.BudgetWithMembers, error) {
-	if input.MonthlyLimitMinor <= 0 {
-		return nil, domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "monthly_limit_minor must be positive")
+func (s *BudgetService) CreateBudget(ctx context.Context, userID string, payload *budget.CreateBudgetRequest) (*budget.BudgetWithMembers, error) {
+	categoryID := payload.CategoryID
+
+	if _, err := s.categoryRepo.GetByID(ctx, categoryID, userID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("category not found")
+		return nil, errs.NewNotFoundError("resource not found", false, nil)
 	}
 
-	if s.planGuard != nil {
-		if err := s.planGuard.CheckBudgetLimit(ctx, userID); err != nil {
-			return nil, err
-		}
-	}
-
-	if _, err := s.categoryRepo.GetByID(ctx, input.CategoryID, userID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
-		return nil, err
-	}
-
-	budget := &model.Budget{
+	b := &budget.Budget{
 		ID:                uuid.New(),
-		CategoryID:        input.CategoryID,
-		MonthlyLimitMinor: input.MonthlyLimitMinor,
-		Currency:          input.Currency,
+		CategoryID:        categoryID,
+		MonthlyLimitMinor: payload.MonthlyLimitMinor,
+		Currency:          payload.Currency,
 	}
 
-	if err := s.repo.Create(ctx, budget); err != nil {
+	if err := s.budgetRepo.Create(ctx, b); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to create budget")
 		return nil, err
 	}
 
-	owner := &model.BudgetMember{
-		BudgetID: budget.ID,
+	owner := &budget.BudgetMember{
+		BudgetID: b.ID,
 		UserID:   userID,
-		Role:     model.BudgetMemberRoleOwner,
+		Role:     budget.BudgetMemberRoleOwner,
 	}
 	if err := s.memberRepo.Add(ctx, owner); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to add budget owner")
 		return nil, err
 	}
 
-	return &model.BudgetWithMembers{
-		Budget:  *budget,
-		Members: []model.BudgetMember{*owner},
+	s.server.Logger.Info().
+		Str("event", "budget_created").
+		Str("budget_id", b.ID.String()).
+		Msg("Budget created successfully")
+
+	return &budget.BudgetWithMembers{
+		Budget:  *b,
+		Members: []budget.BudgetMember{*owner},
 	}, nil
 }
 
-type UpdateBudgetInput struct {
-	CategoryID        uuid.UUID
-	MonthlyLimitMinor int64
-	Currency          string
+func (s *BudgetService) UpdateBudget(ctx context.Context, userID string, budgetID uuid.UUID, payload *budget.UpdateBudgetRequest) (*budget.Budget, error) {
+	b, err := s.budgetRepo.GetByID(ctx, budgetID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("budget not found")
+		return nil, errs.NewNotFoundError("resource not found", false, nil)
+	}
+
+	member, err := s.memberRepo.Get(ctx, budgetID, userID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("user is not a member of this budget")
+		return nil, errs.NewForbiddenError("forbidden", false)
+	}
+
+	if member.Role != budget.BudgetMemberRoleOwner {
+		return nil, errs.NewForbiddenError("forbidden", false)
+	}
+
+	b.CategoryID = payload.CategoryID
+	b.MonthlyLimitMinor = payload.MonthlyLimitMinor
+	b.Currency = payload.Currency
+
+	if err := s.budgetRepo.Update(ctx, b); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to update budget")
+		return nil, err
+	}
+
+	s.server.Logger.Info().
+		Str("event", "budget_updated").
+		Str("budget_id", b.ID.String()).
+		Msg("Budget updated successfully")
+
+	return b, nil
 }
 
-func (s *BudgetService) Update(ctx context.Context, id uuid.UUID, userID string, input UpdateBudgetInput) (*model.Budget, error) {
-	budget, err := s.repo.GetByID(ctx, id)
+func (s *BudgetService) DeleteBudget(ctx context.Context, userID string, budgetID uuid.UUID) error {
+	member, err := s.memberRepo.Get(ctx, budgetID, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
-		}
-		return nil, err
+		s.server.Logger.Error().Err(err).Msg("user is not a member of this budget")
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	member, err := s.memberRepo.Get(ctx, id, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrForbidden
-		}
-		return nil, err
+	if member.Role != budget.BudgetMemberRoleOwner {
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	if member.Role != model.BudgetMemberRoleOwner {
-		return nil, domain.ErrForbidden
-	}
-
-	budget.CategoryID = input.CategoryID
-	budget.MonthlyLimitMinor = input.MonthlyLimitMinor
-	budget.Currency = input.Currency
-
-	if err := s.repo.Update(ctx, budget); err != nil {
-		return nil, err
-	}
-	return budget, nil
-}
-
-func (s *BudgetService) Delete(ctx context.Context, id uuid.UUID, userID string) error {
-	member, err := s.memberRepo.Get(ctx, id, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrForbidden
-		}
+	if err := s.budgetRepo.Delete(ctx, budgetID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to delete budget")
 		return err
 	}
 
-	if member.Role != model.BudgetMemberRoleOwner {
-		return domain.ErrForbidden
-	}
+	s.server.Logger.Info().
+		Str("event", "budget_deleted").
+		Str("budget_id", budgetID.String()).
+		Msg("Budget deleted successfully")
 
-	return s.repo.Delete(ctx, id)
+	return nil
 }
 
-type AddMemberInput struct {
-	UserID string
-}
-
-func (s *BudgetService) AddMember(ctx context.Context, budgetID uuid.UUID, ownerID string, input AddMemberInput) error {
-	owner, err := s.memberRepo.Get(ctx, budgetID, ownerID)
+func (s *BudgetService) AddMember(ctx context.Context, userID string, budgetID uuid.UUID, targetUserID string) error {
+	owner, err := s.memberRepo.Get(ctx, budgetID, userID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrForbidden
-		}
-		return err
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	if owner.Role != model.BudgetMemberRoleOwner {
-		return domain.ErrForbidden
+	if owner.Role != budget.BudgetMemberRoleOwner {
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	member := &model.BudgetMember{
+	member := &budget.BudgetMember{
 		BudgetID: budgetID,
-		UserID:   input.UserID,
-		Role:     model.BudgetMemberRoleMember,
+		UserID:   targetUserID,
+		Role:     budget.BudgetMemberRoleMember,
 	}
 
-	return s.memberRepo.Add(ctx, member)
-}
-
-func (s *BudgetService) RemoveMember(ctx context.Context, budgetID uuid.UUID, ownerID string, targetUserID string) error {
-	owner, err := s.memberRepo.Get(ctx, budgetID, ownerID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.ErrForbidden
-		}
+	if err := s.memberRepo.Add(ctx, member); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to add budget member")
 		return err
 	}
 
-	if owner.Role != model.BudgetMemberRoleOwner {
-		return domain.ErrForbidden
+	return nil
+}
+
+func (s *BudgetService) RemoveMember(ctx context.Context, userID string, budgetID uuid.UUID, targetUserID string) error {
+	owner, err := s.memberRepo.Get(ctx, budgetID, userID)
+	if err != nil {
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	if ownerID == targetUserID {
-		return domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "owner cannot remove themselves")
+	if owner.Role != budget.BudgetMemberRoleOwner {
+		return errs.NewForbiddenError("forbidden", false)
 	}
 
-	return s.memberRepo.Remove(ctx, budgetID, targetUserID)
+	if userID == targetUserID {
+		return errs.NewBadRequestError("owner cannot remove themselves", false, nil, nil, nil)
+	}
+
+	if err := s.memberRepo.Remove(ctx, budgetID, targetUserID); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to remove budget member")
+		return err
+	}
+
+	return nil
 }
 
 func (s *BudgetService) GetUsage(ctx context.Context, budgetID uuid.UUID, month time.Time) (int64, error) {
-	return s.repo.GetUsage(ctx, budgetID, month)
+	return s.budgetRepo.GetUsage(ctx, budgetID, month)
 }

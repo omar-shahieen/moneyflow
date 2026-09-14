@@ -6,8 +6,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/omar-shahieen/moneyflow/internal/domain"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
+	"github.com/omar-shahieen/moneyflow/internal/model/subscription"
 )
 
 type PlanLimits struct {
@@ -24,8 +24,8 @@ type PlanLimits struct {
 	HasMultiCurrency bool
 }
 
-var planLimitsMap = map[model.Plan]PlanLimits{
-	model.PlanFree: {
+var planLimitsMap = map[subscription.Plan]PlanLimits{
+	subscription.PlanFree: {
 		MaxCategories:    5,
 		MaxTransactions:  50,
 		MaxBudgets:       1,
@@ -38,7 +38,7 @@ var planLimitsMap = map[model.Plan]PlanLimits{
 		HasPDFReports:    false,
 		HasMultiCurrency: false,
 	},
-	model.PlanPro: {
+	subscription.PlanPro: {
 		MaxCategories:    50,
 		MaxTransactions:  500,
 		MaxBudgets:       10,
@@ -51,7 +51,7 @@ var planLimitsMap = map[model.Plan]PlanLimits{
 		HasPDFReports:    true,
 		HasMultiCurrency: true,
 	},
-	model.PlanVIP: {
+	subscription.PlanVIP: {
 		MaxCategories:    -1,
 		MaxTransactions:  -1,
 		MaxBudgets:       -1,
@@ -74,15 +74,15 @@ func NewPlanGuardService(pool *pgxpool.Pool) *PlanGuardService {
 	return &PlanGuardService{pool: pool}
 }
 
-func (s *PlanGuardService) getUserPlan(ctx context.Context, userID string) (model.Plan, error) {
-	var plan model.Plan
+func (s *PlanGuardService) getUserPlan(ctx context.Context, userID string) (subscription.Plan, error) {
+	var plan subscription.Plan
 	err := s.pool.QueryRow(ctx,
 		`SELECT plan FROM subscriptions WHERE user_id = $1`,
 		userID,
 	).Scan(&plan)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return model.PlanFree, nil
+			return subscription.PlanFree, nil
 		}
 		return "", err
 	}
@@ -96,7 +96,7 @@ func (s *PlanGuardService) getLimits(ctx context.Context, userID string) (PlanLi
 	}
 	limits, ok := planLimitsMap[plan]
 	if !ok {
-		return planLimitsMap[model.PlanFree], nil
+		return planLimitsMap[subscription.PlanFree], nil
 	}
 	return limits, nil
 }
@@ -120,8 +120,7 @@ func (s *PlanGuardService) CheckCategoryLimit(ctx context.Context, userID string
 	}
 
 	if count >= limits.MaxCategories {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"Category limit reached for your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "Category limit reached for your plan", Status: 402}
 	}
 	return nil
 }
@@ -145,8 +144,7 @@ func (s *PlanGuardService) CheckTransactionLimit(ctx context.Context, userID str
 	}
 
 	if count >= limits.MaxTransactions {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"Transaction limit reached for your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "Transaction limit reached for your plan", Status: 402}
 	}
 	return nil
 }
@@ -173,8 +171,7 @@ func (s *PlanGuardService) CheckBudgetLimit(ctx context.Context, userID string) 
 	}
 
 	if count >= limits.MaxBudgets {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"Budget limit reached for your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "Budget limit reached for your plan", Status: 402}
 	}
 	return nil
 }
@@ -185,12 +182,10 @@ func (s *PlanGuardService) CheckCSVImportLimit(ctx context.Context, userID strin
 		return err
 	}
 	if !limits.HasCSVImport {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"CSV import is not available on your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "CSV import is not available on your plan", Status: 402}
 	}
 	if limits.MaxCSVRows > 0 && rowCount > limits.MaxCSVRows {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"Row limit exceeded for your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "Row limit exceeded for your plan", Status: 402}
 	}
 	return nil
 }
@@ -214,8 +209,7 @@ func (s *PlanGuardService) CheckReportLimit(ctx context.Context, userID string) 
 	}
 
 	if count >= limits.MaxReports {
-		return domain.NewDomainError(domain.ErrPlanLimitExceeded, "PLAN_LIMIT_EXCEEDED", 402,
-			"Report limit reached for your plan")
+		return &errs.HTTPError{Code: "PLAN_LIMIT_EXCEEDED", Message: "Report limit reached for your plan", Status: 402}
 	}
 	return nil
 }

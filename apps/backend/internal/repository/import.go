@@ -2,63 +2,107 @@ package repository
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/imports"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type ImportRepo struct {
-	pool *pgxpool.Pool
+	server *server.Server
 }
 
-func NewImportRepository(pool *pgxpool.Pool) *ImportRepo {
-	return &ImportRepo{pool: pool}
+func NewImportRepository(server *server.Server) *ImportRepo {
+	return &ImportRepo{server: server}
 }
 
-func (r *ImportRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.Import, error) {
-	var imp model.Import
-	err := r.pool.QueryRow(ctx,
-		`SELECT id, user_id, status, total_rows, success_rows, failed_rows, created_at
-		 FROM imports
-		 WHERE id = $1 AND user_id = $2`,
-		id, userID,
-	).Scan(&imp.ID, &imp.UserID, &imp.Status, &imp.TotalRows, &imp.SuccessRows, &imp.FailedRows, &imp.CreatedAt)
+func (r *ImportRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (*imports.Import, error) {
+	stmt := `
+		SELECT
+			id, user_id, status, total_rows, success_rows, failed_rows, created_at
+		FROM
+			imports
+		WHERE
+			id = @id
+			AND user_id = @user_id
+	`
+
+	rows, err := r.server.DB.Pool.Query(ctx, stmt, pgx.NamedArgs{
+		"id":      id,
+		"user_id": userID,
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute get import by id query for import_id=%s user_id=%s: %w", id.String(), userID, err)
 	}
+
+	imp, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[imports.Import])
+	if err != nil {
+		return nil, fmt.Errorf("failed to collect row from table:imports for import_id=%s user_id=%s: %w", id.String(), userID, err)
+	}
+
 	return &imp, nil
 }
 
-func (r *ImportRepo) Create(ctx context.Context, imp *model.Import) error {
-	err := r.pool.QueryRow(ctx,
-		`INSERT INTO imports (id, user_id, status, total_rows, success_rows, failed_rows)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING created_at`,
-		imp.ID, imp.UserID, imp.Status, imp.TotalRows, imp.SuccessRows, imp.FailedRows,
-	).Scan(&imp.CreatedAt)
-	return err
+func (r *ImportRepo) Create(ctx context.Context, imp *imports.Import) error {
+	stmt := `
+		INSERT INTO
+			imports (id, user_id, status, total_rows, success_rows, failed_rows)
+		VALUES
+			(@id, @user_id, @status, @total_rows, @success_rows, @failed_rows)
+		RETURNING
+			created_at
+	`
+
+	err := r.server.DB.Pool.QueryRow(ctx, stmt, pgx.NamedArgs{
+		"id":           imp.ID,
+		"user_id":      imp.UserID,
+		"status":       imp.Status,
+		"total_rows":   imp.TotalRows,
+		"success_rows": imp.SuccessRows,
+		"failed_rows":  imp.FailedRows,
+	}).Scan(&imp.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("failed to execute create import query for user_id=%s: %w", imp.UserID, err)
+	}
+
+	return nil
 }
 
-func (r *ImportRepo) Update(ctx context.Context, imp *model.Import) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE imports
-		 SET status = $1, total_rows = $2, success_rows = $3, failed_rows = $4
-		 WHERE id = $5`,
-		imp.Status, imp.TotalRows, imp.SuccessRows, imp.FailedRows, imp.ID,
-	)
-	return err
+func (r *ImportRepo) Update(ctx context.Context, imp *imports.Import) error {
+	stmt := `
+		UPDATE imports
+		SET status = @status, total_rows = @total_rows, success_rows = @success_rows, failed_rows = @failed_rows
+		WHERE id = @id
+	`
+
+	tag, err := r.server.DB.Pool.Exec(ctx, stmt, pgx.NamedArgs{
+		"id":           imp.ID,
+		"status":       imp.Status,
+		"total_rows":   imp.TotalRows,
+		"success_rows": imp.SuccessRows,
+		"failed_rows":  imp.FailedRows,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to execute update import query for import_id=%s: %w", imp.ID.String(), err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("import not found")
+	}
+
+	return nil
 }
 
 func (r *ImportRepo) EnsureNoActiveImport(ctx context.Context, userID string) error {
 	var count int
-	err := r.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM imports WHERE user_id = $1 AND status IN ('pending', 'processing')`,
-		userID,
+	err := r.server.DB.Pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM imports WHERE user_id = @user_id AND status IN ('pending', 'processing')`,
+		pgx.NamedArgs{"user_id": userID},
 	).Scan(&count)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to check active imports for user_id=%s: %w", userID, err)
 	}
 	if count > 0 {
 		return pgx.ErrNoRows

@@ -7,115 +7,124 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/omar-shahieen/moneyflow/internal/domain"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
-	"github.com/omar-shahieen/moneyflow/internal/domain/ports"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/report"
+	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
+	"github.com/omar-shahieen/moneyflow/internal/ports"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type ReportService struct {
-	repo            ports.ReportRepository
-	transactionRepo ports.TransactionRepository
+	server          *server.Server
+	reportRepo      *repository.ReportRepo
+	transactionRepo *repository.TransactionRepo
 	storage         ports.Storage
-	planGuard       ports.PlanGuard
 }
 
-func NewReportService(
-	repo ports.ReportRepository,
-	transactionRepo ports.TransactionRepository,
-	storage ports.Storage,
-	planGuard ports.PlanGuard,
-) *ReportService {
+func NewReportService(server *server.Server, reportRepo *repository.ReportRepo, transactionRepo *repository.TransactionRepo, storage ports.Storage) *ReportService {
 	return &ReportService{
-		repo:            repo,
+		server:          server,
+		reportRepo:      reportRepo,
 		transactionRepo: transactionRepo,
 		storage:         storage,
-		planGuard:       planGuard,
 	}
 }
 
-func (s *ReportService) GetByID(ctx context.Context, id uuid.UUID, userID string) (*model.Report, error) {
-	return s.repo.GetByID(ctx, id, userID)
-}
-
-func (s *ReportService) List(ctx context.Context, userID string) ([]model.Report, error) {
-	return s.repo.List(ctx, userID, 30)
-}
-
-type CreateReportInput struct {
-	Format      model.ReportFormat
-	PeriodStart time.Time
-	PeriodEnd   time.Time
-}
-
-func (s *ReportService) Create(ctx context.Context, userID string, input CreateReportInput) (*model.Report, error) {
-	if input.Format != model.ReportFormatPDF && input.Format != model.ReportFormatCSV {
-		return nil, domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "format must be 'pdf' or 'csv'")
-	}
-
-	if s.planGuard != nil {
-		if err := s.planGuard.CheckReportLimit(ctx, userID); err != nil {
-			return nil, err
-		}
-	}
-
-	report := &model.Report{
-		ID:          uuid.New(),
-		UserID:      userID,
-		Format:      input.Format,
-		PeriodStart: input.PeriodStart,
-		PeriodEnd:   input.PeriodEnd,
-		Status:      model.ReportStatusPending,
-	}
-
-	if err := s.repo.Create(ctx, report); err != nil {
+func (s *ReportService) GetReports(ctx context.Context, userID string, query *report.ListReportsRequest) (*model.PaginatedResponse[report.Report], error) {
+	reports, err := s.reportRepo.List(ctx, userID, query.ToListQuery())
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch reports")
 		return nil, err
 	}
 
-	go s.generateReport(report.ID, userID)
+	return reports, nil
+}
 
-	return report, nil
+func (s *ReportService) GetReportByID(ctx context.Context, userID string, reportID uuid.UUID) (*report.Report, error) {
+	rep, err := s.reportRepo.GetByID(ctx, reportID, userID)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to fetch report by ID")
+		return nil, err
+	}
+
+	return rep, nil
+}
+
+func (s *ReportService) CreateReport(ctx context.Context, userID string, payload *report.CreateReportRequest) (*report.Report, error) {
+	periodStart, err := time.Parse("2006-01-02", payload.PeriodStart)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid period_start format", false, nil, nil, nil)
+	}
+
+	periodEnd, err := time.Parse("2006-01-02", payload.PeriodEnd)
+	if err != nil {
+		return nil, errs.NewBadRequestError("invalid period_end format", false, nil, nil, nil)
+	}
+
+	rep := &report.Report{
+		ID:          uuid.New(),
+		UserID:      userID,
+		Format:      report.ReportFormat(payload.Format),
+		PeriodStart: periodStart,
+		PeriodEnd:   periodEnd,
+		Status:      report.ReportStatusPending,
+	}
+
+	if err := s.reportRepo.Create(ctx, rep); err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to create report")
+		return nil, err
+	}
+
+	go s.generateReport(rep.ID, userID)
+
+	s.server.Logger.Info().
+		Str("event", "report_created").
+		Str("report_id", rep.ID.String()).
+		Msg("Report created successfully")
+
+	return rep, nil
 }
 
 func (s *ReportService) generateReport(reportID uuid.UUID, userID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	report, err := s.repo.GetByID(ctx, reportID, userID)
+	rep, err := s.reportRepo.GetByID(ctx, reportID, userID)
 	if err != nil {
 		return
 	}
 
-	report.Status = model.ReportStatusProcessing
-	_ = s.repo.Update(ctx, report)
+	rep.Status = report.ReportStatusProcessing
+	_ = s.reportRepo.Update(ctx, rep)
 
-	filter := ports.TransactionFilter{
-		From:  &report.PeriodStart,
-		To:    &report.PeriodEnd,
-		Page:  1,
-		Limit: 10000,
+	filters := ports.TransactionFilters{
+		From: &rep.PeriodStart,
+		To:   &rep.PeriodEnd,
 	}
 
-	transactions, _, err := s.transactionRepo.List(ctx, userID, filter)
+	result, err := s.transactionRepo.List(ctx, userID, &model.ListQuery{Page: 1, Limit: 10000}, filters)
 	if err != nil {
-		report.Status = model.ReportStatusFailed
-		_ = s.repo.Update(ctx, report)
+		rep.Status = report.ReportStatusFailed
+		_ = s.reportRepo.Update(ctx, rep)
 		return
 	}
 
 	storageKey := fmt.Sprintf("reports/%s/%s.csv", userID, reportID.String())
 
-	if report.Format == model.ReportFormatCSV {
-		csvData, err := generateCSV(transactions)
+	if rep.Format == report.ReportFormatCSV {
+		csvData, err := generateCSV(result.Data)
 		if err != nil {
-			report.Status = model.ReportStatusFailed
-			_ = s.repo.Update(ctx, report)
+			rep.Status = report.ReportStatusFailed
+			_ = s.reportRepo.Update(ctx, rep)
 			return
 		}
 
 		uploadURL, err := s.storage.GenerateUploadURL(storageKey, "text/csv", 24*time.Hour)
 		if err != nil {
-			report.Status = model.ReportStatusFailed
-			_ = s.repo.Update(ctx, report)
+			rep.Status = report.ReportStatusFailed
+			_ = s.reportRepo.Update(ctx, rep)
 			return
 		}
 
@@ -123,15 +132,16 @@ func (s *ReportService) generateReport(reportID uuid.UUID, userID string) {
 		_ = uploadURL
 
 		now := time.Now()
-		report.StorageKey = storageKey
-		report.Status = model.ReportStatusReady
-		report.CompletedAt = &now
+		rep.StorageKey = storageKey
+		rep.Status = report.ReportStatusReady
+		rep.CompletedAt = &now
 	}
 
-	_ = s.repo.Update(ctx, report)
+	_ = s.reportRepo.Update(ctx, rep)
+	s.server.Logger.Info().Str("report_id", reportID.String()).Msg("Report generation completed")
 }
 
-func generateCSV(transactions []model.Transaction) ([]byte, error) {
+func generateCSV(transactions []transaction.Transaction) ([]byte, error) {
 	var buf []byte
 	writer := csv.NewWriter(nil)
 
@@ -155,18 +165,24 @@ func generateCSV(transactions []model.Transaction) ([]byte, error) {
 }
 
 func (s *ReportService) GetDownloadURL(ctx context.Context, reportID uuid.UUID, userID string) (string, error) {
-	report, err := s.repo.GetByID(ctx, reportID, userID)
+	rep, err := s.reportRepo.GetByID(ctx, reportID, userID)
 	if err != nil {
 		return "", err
 	}
 
-	if report.Status != model.ReportStatusReady {
-		return "", domain.NewDomainError(domain.ErrValidation, "VALIDATION_FAILED", 422, "report is not ready")
+	if rep.Status != report.ReportStatusReady {
+		return "", errs.NewBadRequestError("report is not ready", false, nil, nil, nil)
 	}
 
 	if s.storage == nil {
 		return "", fmt.Errorf("storage not configured")
 	}
 
-	return s.storage.GenerateDownloadURL(report.StorageKey, 1*time.Hour)
+	url, err := s.storage.GenerateDownloadURL(rep.StorageKey, 1*time.Hour)
+	if err != nil {
+		s.server.Logger.Error().Err(err).Msg("failed to generate download URL")
+		return "", err
+	}
+
+	return url, nil
 }

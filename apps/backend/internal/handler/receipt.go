@@ -7,15 +7,20 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/omar-shahieen/moneyflow/internal/domain/ports"
+	"github.com/omar-shahieen/moneyflow/internal/ports"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 )
 
 type ReceiptHandler struct {
+	Handler
 	storage ports.Storage
 }
 
-func NewReceiptHandler(storage ports.Storage) *ReceiptHandler {
-	return &ReceiptHandler{storage: storage}
+func NewReceiptHandler(s *server.Server, storage ports.Storage) *ReceiptHandler {
+	return &ReceiptHandler{
+		Handler: NewHandler(s),
+		storage: storage,
+	}
 }
 
 type PresignedUploadResponse struct {
@@ -24,34 +29,38 @@ type PresignedUploadResponse struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
+type GetReceiptUploadURLRequest struct {
+	ID uuid.UUID `uri:"id" binding:"required,uuid"`
+}
+
+func (r GetReceiptUploadURLRequest) Validate() error {
+	return nil
+}
+
 func (h *ReceiptHandler) GetUploadURL(c *gin.Context) {
-	userID := GetUserID(c)
-	if userID == "" {
-		RespondError(c, ErrUnauthorized)
-		return
-	}
+	Handle(
+		h.Handler,
+		func(c *gin.Context, req *GetReceiptUploadURLRequest) (*PresignedUploadResponse, error) {
+			userID := GetUserID(c)
 
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, ErrInvalidID)
-		return
-	}
+			storageKey := fmt.Sprintf("receipts/%s/%s.jpg", userID, req.ID.String())
+			contentType := c.GetHeader("Content-Type")
+			if contentType == "" {
+				contentType = "image/jpeg"
+			}
 
-	storageKey := fmt.Sprintf("receipts/%s/%s.jpg", userID, id.String())
-	contentType := c.GetHeader("Content-Type")
-	if contentType == "" {
-		contentType = "image/jpeg"
-	}
+			uploadURL, err := h.storage.GenerateUploadURL(storageKey, contentType, 15*time.Minute)
+			if err != nil {
+				return nil, err
+			}
 
-	uploadURL, err := h.storage.GenerateUploadURL(storageKey, contentType, 15*time.Minute)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
-
-	RespondJSON(c, http.StatusOK, PresignedUploadResponse{
-		UploadURL:  uploadURL,
-		StorageKey: storageKey,
-		ExpiresAt:  time.Now().Add(15 * time.Minute),
-	})
+			return &PresignedUploadResponse{
+				UploadURL:  uploadURL,
+				StorageKey: storageKey,
+				ExpiresAt:  time.Now().Add(15 * time.Minute),
+			}, nil
+		},
+		http.StatusOK,
+		&GetReceiptUploadURLRequest{},
+	)(c)
 }

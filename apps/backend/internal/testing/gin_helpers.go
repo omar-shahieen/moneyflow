@@ -8,10 +8,12 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/omar-shahieen/moneyflow/internal/config"
-	"github.com/omar-shahieen/moneyflow/internal/router"
-	"github.com/rs/zerolog"
+	"github.com/omar-shahieen/moneyflow/internal/handler"
+	"github.com/omar-shahieen/moneyflow/internal/middleware"
+	"github.com/omar-shahieen/moneyflow/internal/repository"
+	"github.com/omar-shahieen/moneyflow/internal/server"
+	"github.com/omar-shahieen/moneyflow/internal/service"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,12 +22,9 @@ func init() {
 }
 
 type TestGinServer struct {
-	Router *router.GinRouter
 	Engine *gin.Engine
-	DB     *pgxpool.Pool
-	Config *config.Config
-	Logger zerolog.Logger
 	Server *httptest.Server
+	Config *config.Config
 	t      testing.TB
 }
 
@@ -34,23 +33,33 @@ func SetupTestGinServer(t *testing.T) (*TestGinServer, func()) {
 
 	testDB, dbCleanup := SetupTestDB(t)
 
-	logger := zerolog.New(zerolog.ConsoleWriter{Out: testWriter{t}}).
-		Level(zerolog.InfoLevel).
-		With().
-		Timestamp().
-		Logger()
+	srv, err := server.New(testDB.Config, nil, nil)
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
 
-	r := router.NewGinRouter(testDB.Config, testDB.Pool, logger)
+	repos := repository.NewRepositories(srv)
+	services, _ := service.NewServices(srv, repos)
+	handlers := handler.NewHandlers(srv, services)
 
-	ts := httptest.NewServer(r.Engine())
+	router := gin.New()
+	middlewares := middleware.NewMiddlewares(srv)
+
+	router.Use(
+		middlewares.Global.CORS(),
+		middlewares.Global.Secure(),
+		middleware.RequestID(),
+		middlewares.Global.Recover(),
+	)
+
+	_ = handlers
+
+	ts := httptest.NewServer(router)
 
 	return &TestGinServer{
-		Router: r,
-		Engine: r.Engine(),
-		DB:     testDB.Pool,
-		Config: testDB.Config,
-		Logger: logger,
+		Engine: router,
 		Server: ts,
+		Config: testDB.Config,
 		t:      t,
 	}, func() {
 		ts.Close()
@@ -59,15 +68,6 @@ func SetupTestGinServer(t *testing.T) (*TestGinServer, func()) {
 		}
 		dbCleanup()
 	}
-}
-
-type testWriter struct {
-	t *testing.T
-}
-
-func (tw testWriter) Write(p []byte) (n int, err error) {
-	tw.t.Log(string(p))
-	return len(p), nil
 }
 
 func (s *TestGinServer) MakeRequest(method, path string, body interface{}) *httptest.ResponseRecorder {

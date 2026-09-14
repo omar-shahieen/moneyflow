@@ -2,14 +2,13 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/omar-shahieen/moneyflow/internal/middleware"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 )
 
 type HealthHandler struct {
@@ -22,7 +21,7 @@ func NewHealthHandler(s *server.Server) *HealthHandler {
 	}
 }
 
-func (h *HealthHandler) CheckHealth(c echo.Context) error {
+func (h *HealthHandler) CheckHealth(c *gin.Context) {
 	start := time.Now()
 	logger := middleware.GetLogger(c).With().
 		Str("operation", "health_check").
@@ -118,27 +117,13 @@ func (h *HealthHandler) CheckHealth(c echo.Context) error {
 					"total_duration_ms": time.Since(start).Milliseconds(),
 				})
 		}
-		return c.JSON(http.StatusServiceUnavailable, response)
+		c.JSON(http.StatusServiceUnavailable, response)
+		return
 	}
 
 	logger.Info().
 		Dur("total_duration", time.Since(start)).
 		Msg("health check passed")
 
-	err := c.JSON(http.StatusOK, response)
-	if err != nil {
-		logger.Error().Err(err).Msg("failed to write JSON response")
-		if h.server.LoggerService != nil && h.server.LoggerService.GetApplication() != nil {
-			h.server.LoggerService.GetApplication().RecordCustomEvent(
-				"HealthCheckError", map[string]interface{}{
-					"check_type":    "response",
-					"operation":     "health_check",
-					"error_type":    "json_response_error",
-					"error_message": err.Error(),
-				})
-		}
-		return fmt.Errorf("failed to write JSON response: %w", err)
-	}
-
-	return nil
+	c.JSON(http.StatusOK, response)
 }

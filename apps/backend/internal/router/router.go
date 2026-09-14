@@ -2,44 +2,58 @@ package router
 
 import (
 	"net/http"
+	"sync"
 
-	"github.com/labstack/echo/v4"
-	echoMiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/gin-gonic/gin"
 	"github.com/omar-shahieen/moneyflow/internal/handler"
 	"github.com/omar-shahieen/moneyflow/internal/middleware"
+	v1 "github.com/omar-shahieen/moneyflow/internal/router/v1"
 	"github.com/omar-shahieen/moneyflow/internal/server"
-	"github.com/omar-shahieen/moneyflow/internal/service"
 	"golang.org/x/time/rate"
 )
 
-func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services) *echo.Echo {
+func NewRouter(s *server.Server, h *handler.Handlers) *gin.Engine {
 	middlewares := middleware.NewMiddlewares(s)
 
-	router := echo.New()
+	router := gin.New()
 
-	router.HTTPErrorHandler = middlewares.Global.GlobalErrorHandler
+	rateLimiter := func() gin.HandlerFunc {
+		var ips = make(map[string]*rate.Limiter)
+		var mu sync.Mutex
 
-	// global middlewares
-	router.Use(
-		echoMiddleware.RateLimiterWithConfig(echoMiddleware.RateLimiterConfig{
-			Store: echoMiddleware.NewRateLimiterMemoryStore(rate.Limit(20)),
-			DenyHandler: func(c echo.Context, identifier string, err error) error {
-				// Record rate limit hit metrics
+		return func(c *gin.Context) {
+			ip := c.ClientIP()
+
+			mu.Lock()
+			limiter, exists := ips[ip]
+			if !exists {
+				limiter = rate.NewLimiter(rate.Limit(20), 1)
+				ips[ip] = limiter
+			}
+			mu.Unlock()
+
+			if !limiter.Allow() {
 				if rateLimitMiddleware := middlewares.RateLimit; rateLimitMiddleware != nil {
-					rateLimitMiddleware.RecordRateLimitHit(c.Path())
+					rateLimitMiddleware.RecordRateLimitHit(c.Request.URL.Path)
 				}
 
 				s.Logger.Warn().
 					Str("request_id", middleware.GetRequestID(c)).
-					Str("identifier", identifier).
-					Str("path", c.Path()).
-					Str("method", c.Request().Method).
-					Str("ip", c.RealIP()).
+					Str("identifier", ip).
+					Str("path", c.Request.URL.Path).
+					Str("method", c.Request.Method).
+					Str("ip", ip).
 					Msg("rate limit exceeded")
 
-				return echo.NewHTTPError(http.StatusTooManyRequests, "Rate limit exceeded")
-			},
-		}),
+				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{"message": "Rate limit exceeded"})
+				return
+			}
+			c.Next()
+		}
+	}()
+
+	router.Use(
+		rateLimiter,
 		middlewares.Global.CORS(),
 		middlewares.Global.Secure(),
 		middleware.RequestID(),
@@ -50,11 +64,12 @@ func NewRouter(s *server.Server, h *handler.Handlers, services *service.Services
 		middlewares.Global.Recover(),
 	)
 
-	// register system routes
 	registerSystemRoutes(router, h)
 
-	// register versioned routes
-	router.Group("/api/v1")
+	v1Group := router.Group("/api/v1")
+	v1Group.Use(middlewares.Auth.RequireAuth())
+
+	v1.RegisterV1Routes(v1Group, h)
 
 	return router
 }

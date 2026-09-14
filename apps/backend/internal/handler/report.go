@@ -2,26 +2,24 @@ package handler
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/omar-shahieen/moneyflow/internal/domain/model"
+	"github.com/omar-shahieen/moneyflow/internal/model"
+	"github.com/omar-shahieen/moneyflow/internal/model/report"
+	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/service"
 )
 
 type ReportHandler struct {
-	service *service.ReportService
+	Handler
+	reportService *service.ReportService
 }
 
-func NewReportHandler(s *service.ReportService) *ReportHandler {
-	return &ReportHandler{service: s}
-}
-
-type CreateReportRequest struct {
-	Format      string `json:"format" binding:"required"`
-	PeriodStart string `json:"period_start" binding:"required"`
-	PeriodEnd   string `json:"period_end" binding:"required"`
+func NewReportHandler(s *server.Server, reportService *service.ReportService) *ReportHandler {
+	return &ReportHandler{
+		Handler:       NewHandler(s),
+		reportService: reportService,
+	}
 }
 
 type ReportResponse struct {
@@ -35,133 +33,103 @@ type ReportResponse struct {
 	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
+func toReportResponse(r *report.Report, downloadURL string) ReportResponse {
+	resp := ReportResponse{
+		ID:          r.ID.String(),
+		Format:      string(r.Format),
+		PeriodStart: r.PeriodStart.Format("2006-01-02"),
+		PeriodEnd:   r.PeriodEnd.Format("2006-01-02"),
+		Status:      string(r.Status),
+		CreatedAt:   r.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	if r.CompletedAt != nil {
+		s := r.CompletedAt.Format("2006-01-02T15:04:05Z")
+		resp.CompletedAt = &s
+	}
+	if r.Status == report.ReportStatusReady && downloadURL != "" {
+		resp.DownloadURL = &downloadURL
+	}
+	return resp
+}
+
 func (h *ReportHandler) List(c *gin.Context) {
-	userID := GetUserID(c)
-	if userID == "" {
-		RespondError(c, ErrUnauthorized)
-		return
-	}
+	Handle(
+		h.Handler,
+		func(c *gin.Context, query *report.ListReportsRequest) (*model.PaginatedResponse[ReportResponse], error) {
+			userID := GetUserID(c)
 
-	reports, err := h.service.List(c.Request.Context(), userID)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
-
-	if reports == nil {
-		reports = []model.Report{}
-	}
-
-	var responses []ReportResponse
-	for _, r := range reports {
-		resp := ReportResponse{
-			ID:          r.ID.String(),
-			Format:      string(r.Format),
-			PeriodStart: r.PeriodStart.Format("2006-01-02"),
-			PeriodEnd:   r.PeriodEnd.Format("2006-01-02"),
-			Status:      string(r.Status),
-			CreatedAt:   r.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		}
-		if r.CompletedAt != nil {
-			s := r.CompletedAt.Format("2006-01-02T15:04:05Z")
-			resp.CompletedAt = &s
-		}
-		if r.Status == model.ReportStatusReady {
-			url, err := h.service.GetDownloadURL(c.Request.Context(), r.ID, userID)
-			if err == nil {
-				resp.DownloadURL = &url
+			result, err := h.reportService.GetReports(c.Request.Context(), userID, query)
+			if err != nil {
+				return nil, err
 			}
-		}
-		responses = append(responses, resp)
-	}
 
-	RespondJSON(c, http.StatusOK, responses)
+			responses := make([]ReportResponse, 0, len(result.Data))
+			for _, r := range result.Data {
+				var downloadURL string
+				if r.Status == report.ReportStatusReady {
+					url, err := h.reportService.GetDownloadURL(c.Request.Context(), r.ID, userID)
+					if err == nil {
+						downloadURL = url
+					}
+				}
+				responses = append(responses, toReportResponse(&r, downloadURL))
+			}
+
+			return &model.PaginatedResponse[ReportResponse]{
+				Data:       responses,
+				Page:       result.Page,
+				Limit:      result.Limit,
+				Total:      result.Total,
+				TotalPages: result.TotalPages,
+			}, nil
+		},
+		http.StatusOK,
+		&report.ListReportsRequest{},
+	)(c)
 }
 
 func (h *ReportHandler) GetByID(c *gin.Context) {
-	userID := GetUserID(c)
-	if userID == "" {
-		RespondError(c, ErrUnauthorized)
-		return
-	}
+	Handle(
+		h.Handler,
+		func(c *gin.Context, req *report.GetReportRequest) (*ReportResponse, error) {
+			userID := GetUserID(c)
 
-	id, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		RespondError(c, ErrInvalidID)
-		return
-	}
+			r, err := h.reportService.GetReportByID(c.Request.Context(), userID, req.ID)
+			if err != nil {
+				return nil, err
+			}
 
-	report, err := h.service.GetByID(c.Request.Context(), id, userID)
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
+			var downloadURL string
+			if r.Status == report.ReportStatusReady {
+				url, err := h.reportService.GetDownloadURL(c.Request.Context(), req.ID, userID)
+				if err == nil {
+					downloadURL = url
+				}
+			}
 
-	resp := ReportResponse{
-		ID:          report.ID.String(),
-		Format:      string(report.Format),
-		PeriodStart: report.PeriodStart.Format("2006-01-02"),
-		PeriodEnd:   report.PeriodEnd.Format("2006-01-02"),
-		Status:      string(report.Status),
-		CreatedAt:   report.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	}
-
-	if report.CompletedAt != nil {
-		s := report.CompletedAt.Format("2006-01-02T15:04:05Z")
-		resp.CompletedAt = &s
-	}
-
-	if report.Status == model.ReportStatusReady {
-		url, err := h.service.GetDownloadURL(c.Request.Context(), id, userID)
-		if err == nil {
-			resp.DownloadURL = &url
-		}
-	}
-
-	RespondJSON(c, http.StatusOK, resp)
+			resp := toReportResponse(r, downloadURL)
+			return &resp, nil
+		},
+		http.StatusOK,
+		&report.GetReportRequest{},
+	)(c)
 }
 
 func (h *ReportHandler) Create(c *gin.Context) {
-	userID := GetUserID(c)
-	if userID == "" {
-		RespondError(c, ErrUnauthorized)
-		return
-	}
+	Handle(
+		h.Handler,
+		func(c *gin.Context, payload *report.CreateReportRequest) (*ReportResponse, error) {
+			userID := GetUserID(c)
 
-	var req CreateReportRequest
-	if err := BindAndValidate(c, &req); err != nil {
-		RespondError(c, err)
-		return
-	}
+			r, err := h.reportService.CreateReport(c.Request.Context(), userID, payload)
+			if err != nil {
+				return nil, err
+			}
 
-	periodStart, err := time.Parse("2006-01-02", req.PeriodStart)
-	if err != nil {
-		RespondError(c, ErrInvalidID)
-		return
-	}
-
-	periodEnd, err := time.Parse("2006-01-02", req.PeriodEnd)
-	if err != nil {
-		RespondError(c, ErrInvalidID)
-		return
-	}
-
-	report, err := h.service.Create(c.Request.Context(), userID, service.CreateReportInput{
-		Format:      model.ReportFormat(req.Format),
-		PeriodStart: periodStart,
-		PeriodEnd:   periodEnd,
-	})
-	if err != nil {
-		RespondError(c, err)
-		return
-	}
-
-	RespondJSON(c, http.StatusAccepted, ReportResponse{
-		ID:          report.ID.String(),
-		Format:      string(report.Format),
-		PeriodStart: report.PeriodStart.Format("2006-01-02"),
-		PeriodEnd:   report.PeriodEnd.Format("2006-01-02"),
-		Status:      string(report.Status),
-		CreatedAt:   report.CreatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+			resp := toReportResponse(r, "")
+			return &resp, nil
+		},
+		http.StatusAccepted,
+		&report.CreateReportRequest{},
+	)(c)
 }
