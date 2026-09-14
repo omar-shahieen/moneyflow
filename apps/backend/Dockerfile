@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
       -X main.GitSHA=${GIT_SHA} \
       -X main.BuildTime=${BUILD_TIME}" \
     -o /dist/moneyflow \
-    ./cmd/moneyflow
+    ./cmd/api
 
 # ─────────────────────────────────────────────
 # Stage 2 — Runtime

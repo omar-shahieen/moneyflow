@@ -47,8 +47,8 @@ services:
   # ── Go API ─────────────────────────────────────────────────
   api:
     build:
-      context: ./apps/backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/backend/Dockerfile
     command: ["api"]
     restart: unless-stopped
     ports:
