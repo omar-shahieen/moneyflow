@@ -3,16 +3,11 @@ package budget
 import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 )
 
 var validate = validator.New()
-
-type EmptyRequest struct{}
-
-func (r EmptyRequest) Validate() error {
-	return validate.Struct(r)
-}
 
 type GetBudgetRequest struct {
 	ID uuid.UUID `uri:"id" binding:"required"`
@@ -24,6 +19,15 @@ func (r GetBudgetRequest) Validate() error {
 
 type ListBudgetsRequest struct {
 	model.PaginationRequest
+	Search string `form:"search" binding:"omitempty"`
+}
+
+func (r ListBudgetsRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
+	if r.Search == "" {
+		return ""
+	}
+	args["search"] = r.Search
+	return " AND b.category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')"
 }
 
 type CreateBudgetRequest struct {

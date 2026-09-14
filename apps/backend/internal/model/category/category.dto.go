@@ -18,11 +18,7 @@ func (r GetCategoryRequest) Validate() error {
 
 type ListCategoriesRequest struct {
 	model.PaginationRequest
-	Type string `form:"type" binding:"omitempty,oneof=income expense"`
-}
-
-type CategoryFilters struct {
-	Type *string
+	Type string `form:"type" filter:"type,eq" binding:"omitempty,oneof=income expense"`
 }
 
 type CreateCategoryRequest struct {
@@ -50,8 +46,4 @@ type DeleteCategoryRequest struct {
 
 func (r DeleteCategoryRequest) Validate() error {
 	return validate.Struct(r)
-}
-
-type CategoryResponse struct {
-	Category
 }

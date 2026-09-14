@@ -46,7 +46,10 @@ func (r *BudgetRepo) GetByID(ctx context.Context, id uuid.UUID) (*budget.Budget,
 	return &b, nil
 }
 
-func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[budget.BudgetWithMembers], error) {
+func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, req *budget.ListBudgetsRequest) (*model.PaginatedResponse[budget.BudgetWithMembers], error) {
+	args := pgx.NamedArgs{"user_id": userID}
+	where := BuildFilterClause(req, args)
+
 	stmt := `
 		SELECT
 			b.id, b.category_id, b.monthly_limit_minor, b.currency, b.created_at
@@ -55,23 +58,14 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 		JOIN
 			budget_members bm ON b.id = bm.budget_id
 		WHERE
-			bm.user_id = @user_id
-	`
+			bm.user_id = @user_id` + where
 
-	args := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if query.Search != nil {
-		stmt += ` AND b.category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
-		args["search"] = *query.Search
-	}
-
-	sortColumn := "b." + EnsureSortColumn(query.Sort, map[string]bool{"created_at": true, "monthly_limit_minor": true, "currency": true}, "created_at")
-	sortOrder := EnsureSortOrder(query.Order)
+	sortColumn := "b." + EnsureSortColumn(req.Sort, map[string]bool{"created_at": true, "monthly_limit_minor": true, "currency": true}, "created_at")
+	sortOrder := EnsureSortOrder(req.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
+	query := req.ToListQuery()
 	args["limit"] = query.Limit
 	args["offset"] = Offset(query)
 
@@ -117,20 +111,10 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 		JOIN
 			budget_members bm ON b.id = bm.budget_id
 		WHERE
-			bm.user_id = @user_id
-	`
-
-	countArgs := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if query.Search != nil {
-		countStmt += ` AND b.category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
-		countArgs["search"] = *query.Search
-	}
+			bm.user_id = @user_id` + where
 
 	var total int
-	err = r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
+	err = r.server.DB.Pool.QueryRow(ctx, countStmt, args).Scan(&total)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get total count of budgets for user_id=%s: %w", userID, err)
 	}

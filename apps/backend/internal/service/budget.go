@@ -29,7 +29,8 @@ func NewBudgetService(server *server.Server, budgetRepo *repository.BudgetRepo, 
 }
 
 func (s *BudgetService) GetBudgets(ctx context.Context, userID string, query *budget.ListBudgetsRequest) (*model.PaginatedResponse[budget.BudgetResponse], error) {
-	result, err := s.budgetRepo.ListByUser(ctx, userID, query.ToListQuery())
+	query.Normalize()
+	result, err := s.budgetRepo.ListByUser(ctx, userID, query)
 	if err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to fetch budgets")
 		return nil, err

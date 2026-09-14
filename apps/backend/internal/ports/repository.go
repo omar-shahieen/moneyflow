@@ -24,7 +24,7 @@ type UserRepository interface {
 
 type CategoryRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*category.Category, error)
-	List(ctx context.Context, userID string, query *model.ListQuery, filters category.CategoryFilters) (*model.PaginatedResponse[category.Category], error)
+	List(ctx context.Context, userID string, req *category.ListCategoriesRequest) (*model.PaginatedResponse[category.Category], error)
 	Create(ctx context.Context, c *category.Category) error
 	Update(ctx context.Context, c *category.Category) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
@@ -33,7 +33,7 @@ type CategoryRepository interface {
 
 type TransactionRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*transaction.Transaction, error)
-	List(ctx context.Context, userID string, query *model.ListQuery, filters transaction.TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error)
+	List(ctx context.Context, userID string, req *transaction.ListTransactionsRequest) (*model.PaginatedResponse[transaction.Transaction], error)
 	Create(ctx context.Context, t *transaction.Transaction) error
 	Update(ctx context.Context, t *transaction.Transaction) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
@@ -43,7 +43,7 @@ type TransactionRepository interface {
 
 type BudgetRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*budget.Budget, error)
-	ListByUser(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[budget.BudgetWithMembers], error)
+	ListByUser(ctx context.Context, userID string, req *budget.ListBudgetsRequest) (*model.PaginatedResponse[budget.BudgetWithMembers], error)
 	Create(ctx context.Context, b *budget.Budget) error
 	Update(ctx context.Context, b *budget.Budget) error
 	Delete(ctx context.Context, id uuid.UUID) error
@@ -61,7 +61,7 @@ type BudgetMemberRepository interface {
 
 type RecurringRuleRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*recurring.RecurringRule, error)
-	List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[recurring.RecurringRule], error)
+	List(ctx context.Context, userID string, req *recurring.ListRecurringRulesRequest) (*model.PaginatedResponse[recurring.RecurringRule], error)
 	Create(ctx context.Context, r *recurring.RecurringRule) error
 	Update(ctx context.Context, r *recurring.RecurringRule) error
 	Delete(ctx context.Context, id uuid.UUID, userID string) error
@@ -73,7 +73,7 @@ type RecurringRuleRepository interface {
 
 type ReportRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*report.Report, error)
-	List(ctx context.Context, userID string, query *model.ListQuery, filters report.ReportFilters) (*model.PaginatedResponse[report.Report], error)
+	List(ctx context.Context, userID string, req *report.ListReportsRequest) (*model.PaginatedResponse[report.Report], error)
 	Create(ctx context.Context, r *report.Report) error
 	Update(ctx context.Context, r *report.Report) error
 	CountByUser(ctx context.Context, userID string) (int, error)

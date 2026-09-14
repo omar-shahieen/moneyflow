@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -47,81 +46,18 @@ func (r *ReportRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (
 	return &rep, nil
 }
 
-func (r *ReportRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters report.ReportFilters) (*model.PaginatedResponse[report.Report], error) {
-	stmt := `
-		SELECT
-			id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
-		FROM
-			reports
-		WHERE
-			user_id = @user_id
-	`
+func (r *ReportRepo) List(ctx context.Context, userID string, req *report.ListReportsRequest) (*model.PaginatedResponse[report.Report], error) {
+	args := pgx.NamedArgs{"user_id": userID}
+	where := BuildFilterClause(req, args)
 
-	args := pgx.NamedArgs{
-		"user_id": userID,
-	}
+	baseStmt := `SELECT id, user_id, format, period_start, period_end, status, storage_key, created_at, completed_at
+		FROM reports WHERE user_id = @user_id` + where
+	countStmt := `SELECT COUNT(*) FROM reports WHERE user_id = @user_id` + where
 
-	if filters.Status != nil {
-		stmt += ` AND status = @status`
-		args["status"] = *filters.Status
-	}
-
-	if filters.Format != nil {
-		stmt += ` AND format = @format`
-		args["format"] = *filters.Format
-	}
-
-	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"created_at": true, "period_start": true, "period_end": true, "status": true}, "created_at")
-	sortOrder := EnsureSortOrder(query.Order)
-	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	stmt += ` LIMIT @limit OFFSET @offset`
-	args["limit"] = query.Limit
-	args["offset"] = Offset(query)
-
-	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute get reports query for user_id=%s: %w", userID, err)
-	}
-
-	reports, err := pgx.CollectRows(rows, pgx.RowToStructByName[report.Report])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return EmptyPaginatedResponse[report.Report](query), nil
-		}
-		return nil, fmt.Errorf("failed to collect rows from table:reports for user_id=%s: %w", userID, err)
-	}
-
-	countStmt := `
-		SELECT
-			COUNT(*)
-		FROM
-			reports
-		WHERE
-			user_id = @user_id
-	`
-
-	countArgs := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if filters.Status != nil {
-		countStmt += ` AND status = @status`
-		countArgs["status"] = *filters.Status
-	}
-
-	if filters.Format != nil {
-		countStmt += ` AND format = @format`
-		countArgs["format"] = *filters.Format
-	}
-
-	var total int
-	err = r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total count of reports for user_id=%s: %w", userID, err)
-	}
-
-	return NewPaginatedResponse(reports, query, total), nil
+	return RunPaginatedQuery[report.Report](
+		ctx, r.server.DB.Pool, baseStmt, countStmt, args, req.ToListQuery(),
+		map[string]bool{"created_at": true, "period_start": true, "period_end": true, "status": true}, "created_at",
+	)
 }
 
 func (r *ReportRepo) Create(ctx context.Context, rep *report.Report) error {

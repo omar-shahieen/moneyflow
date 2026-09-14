@@ -30,7 +30,8 @@ func NewRecurringRuleService(server *server.Server, recurringRepo *repository.Re
 }
 
 func (s *RecurringRuleService) GetRecurringRules(ctx context.Context, userID string, query *recurring.ListRecurringRulesRequest) (*model.PaginatedResponse[recurring.RecurringRule], error) {
-	rules, err := s.recurringRepo.List(ctx, userID, query.ToListQuery())
+	query.Normalize()
+	rules, err := s.recurringRepo.List(ctx, userID, query)
 	if err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to fetch recurring rules")
 		return nil, err

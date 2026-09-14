@@ -3,6 +3,7 @@ package recurring
 import (
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 )
 
@@ -18,6 +19,16 @@ func (r GetRecurringRuleRequest) Validate() error {
 
 type ListRecurringRulesRequest struct {
 	model.PaginationRequest
+	Frequency string `form:"frequency" filter:"frequency,eq" binding:"omitempty,oneof=weekly monthly"`
+	Search    string `form:"search" binding:"omitempty"`
+}
+
+func (r ListRecurringRulesRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
+	if r.Search == "" {
+		return ""
+	}
+	args["search"] = r.Search
+	return " AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')"
 }
 
 type CreateRecurringRuleRequest struct {
@@ -53,8 +64,4 @@ type DeleteRecurringRuleRequest struct {
 
 func (r DeleteRecurringRuleRequest) Validate() error {
 	return validate.Struct(r)
-}
-
-type RecurringRuleResponse struct {
-	RecurringRule
 }

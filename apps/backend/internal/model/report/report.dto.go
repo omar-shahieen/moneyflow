@@ -18,13 +18,8 @@ func (r GetReportRequest) Validate() error {
 
 type ListReportsRequest struct {
 	model.PaginationRequest
-	Status string `form:"status" binding:"omitempty,oneof=pending processing ready failed"`
-	Format string `form:"format" binding:"omitempty,oneof=pdf csv"`
-}
-
-type ReportFilters struct {
-	Status *string
-	Format *string
+	Status string `form:"status" filter:"status,eq" binding:"omitempty,oneof=pending processing ready failed"`
+	Format string `form:"format" filter:"format,eq" binding:"omitempty,oneof=pdf csv"`
 }
 
 type CreateReportRequest struct {
@@ -35,16 +30,4 @@ type CreateReportRequest struct {
 
 func (r CreateReportRequest) Validate() error {
 	return validate.Struct(r)
-}
-
-type DeleteReportRequest struct {
-	ID uuid.UUID `uri:"id" binding:"required,uuid"`
-}
-
-func (r DeleteReportRequest) Validate() error {
-	return validate.Struct(r)
-}
-
-type ReportResponse struct {
-	Report
 }

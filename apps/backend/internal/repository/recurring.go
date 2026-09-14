@@ -49,72 +49,18 @@ func (r *RecurringRuleRepo) GetByID(ctx context.Context, id uuid.UUID, userID st
 	return &rr, nil
 }
 
-func (r *RecurringRuleRepo) List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[recurring.RecurringRule], error) {
-	stmt := `
-		SELECT
-			id, user_id, category_id, amount_minor, currency, frequency,
-			next_run_date, last_generated_date, end_date
-		FROM
-			recurring_rules
-		WHERE
-			user_id = @user_id
-	`
+func (r *RecurringRuleRepo) List(ctx context.Context, userID string, req *recurring.ListRecurringRulesRequest) (*model.PaginatedResponse[recurring.RecurringRule], error) {
+	args := pgx.NamedArgs{"user_id": userID}
+	where := BuildFilterClause(req, args)
 
-	args := pgx.NamedArgs{
-		"user_id": userID,
-	}
+	baseStmt := `SELECT id, user_id, category_id, amount_minor, currency, frequency, next_run_date, last_generated_date, end_date
+		FROM recurring_rules WHERE user_id = @user_id` + where
+	countStmt := `SELECT COUNT(*) FROM recurring_rules WHERE user_id = @user_id` + where
 
-	if query.Search != nil {
-		stmt += ` AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
-		args["search"] = *query.Search
-	}
-
-	sortColumn := "next_run_date"
-	sortOrder := "asc"
-	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	stmt += ` LIMIT @limit OFFSET @offset`
-	args["limit"] = query.Limit
-	args["offset"] = Offset(query)
-
-	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute get recurring rules query for user_id=%s: %w", userID, err)
-	}
-
-	rules, err := pgx.CollectRows(rows, pgx.RowToStructByName[recurring.RecurringRule])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return EmptyPaginatedResponse[recurring.RecurringRule](query), nil
-		}
-		return nil, fmt.Errorf("failed to collect rows from table:recurring_rules for user_id=%s: %w", userID, err)
-	}
-
-	countStmt := `
-		SELECT
-			COUNT(*)
-		FROM
-			recurring_rules
-		WHERE
-			user_id = @user_id
-	`
-
-	countArgs := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if query.Search != nil {
-		countStmt += ` AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
-		countArgs["search"] = *query.Search
-	}
-
-	var total int
-	err = r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total count of recurring rules for user_id=%s: %w", userID, err)
-	}
-
-	return NewPaginatedResponse(rules, query, total), nil
+	return RunPaginatedQuery[recurring.RecurringRule](
+		ctx, r.server.DB.Pool, baseStmt, countStmt, args, req.ToListQuery(),
+		map[string]bool{"next_run_date": true, "amount_minor": true, "created_at": true}, "next_run_date",
+	)
 }
 
 func (r *RecurringRuleRepo) Create(ctx context.Context, rule *recurring.RecurringRule) error {

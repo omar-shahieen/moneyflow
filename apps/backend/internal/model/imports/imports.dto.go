@@ -15,23 +15,6 @@ func (r GetImportRequest) Validate() error {
 	return validate.Struct(r)
 }
 
-type CreateImportRequest struct {
-	FileName string `json:"file_name" binding:"required"`
-	FileSize int64  `json:"file_size" binding:"required,gt=0"`
-}
-
-func (r CreateImportRequest) Validate() error {
-	return validate.Struct(r)
-}
-
-type DeleteImportRequest struct {
-	ID string `uri:"id" binding:"required,uuid"`
-}
-
-func (r DeleteImportRequest) Validate() error {
-	return validate.Struct(r)
-}
-
 type ImportResponse struct {
 	ID          string           `json:"id"`
 	Status      string           `json:"status"`

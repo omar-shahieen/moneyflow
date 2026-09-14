@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/omar-shahieen/moneyflow/internal/model"
 )
 
@@ -16,16 +17,6 @@ type GetTransactionRequest struct {
 
 func (r GetTransactionRequest) Validate() error {
 	return validate.Struct(r)
-}
-
-type ListTransactionsRequest struct {
-	model.PaginationRequest
-	CategoryID string     `form:"category_id" binding:"omitempty,uuid"`
-	Type       string     `form:"type" binding:"omitempty,oneof=income expense"`
-	StartDate  *time.Time `form:"start_date" binding:"omitempty"`
-	EndDate    *time.Time `form:"end_date" binding:"omitempty"`
-	MinAmount  *int64     `form:"min_amount" binding:"omitempty"`
-	MaxAmount  *int64     `form:"max_amount" binding:"omitempty"`
 }
 
 type CreateTransactionRequest struct {
@@ -63,10 +54,6 @@ func (r DeleteTransactionRequest) Validate() error {
 	return validate.Struct(r)
 }
 
-type TransactionResponse struct {
-	Transaction
-}
-
 type SummaryRequest struct {
 	Month time.Time `form:"month" validate:"omitempty,datetime=2006-01"`
 }
@@ -94,11 +81,21 @@ type CurrencyTotal struct {
 	TotalIncome  int64  `json:"total_income"`
 	TotalExpense int64  `json:"total_expense"`
 }
-type TransactionFilters struct {
-	CategoryID *uuid.UUID
-	Type       *string
-	From       *time.Time
-	To         *time.Time
-	MinAmount  *int64
-	MaxAmount  *int64
+
+type ListTransactionsRequest struct {
+	model.PaginationRequest
+	CategoryID *uuid.UUID `form:"category_id" filter:"category_id,eq"`
+	MinAmount  *int64     `form:"min_amount" filter:"amount_minor,gte"`
+	MaxAmount  *int64     `form:"max_amount" filter:"amount_minor,lte"`
+	From       *time.Time `form:"from" filter:"occurred_at,gte"`
+	To         *time.Time `form:"to" filter:"occurred_at,lte"`
+	Type       *string    `form:"type"`
+}
+
+func (r ListTransactionsRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
+	if r.Type == nil {
+		return ""
+	}
+	args["cat_type"] = *r.Type
+	return " AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND type = @cat_type)"
 }

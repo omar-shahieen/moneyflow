@@ -33,15 +33,8 @@ func NewReportService(server *server.Server, reportRepo *repository.ReportRepo, 
 }
 
 func (s *ReportService) GetReports(ctx context.Context, userID string, query *report.ListReportsRequest) (*model.PaginatedResponse[report.Report], error) {
-	filters := report.ReportFilters{}
-	if query.Status != "" {
-		filters.Status = &query.Status
-	}
-	if query.Format != "" {
-		filters.Format = &query.Format
-	}
-
-	reports, err := s.reportRepo.List(ctx, userID, query.ToListQuery(), filters)
+	query.Normalize()
+	reports, err := s.reportRepo.List(ctx, userID, query)
 	if err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to fetch reports")
 		return nil, err
@@ -107,12 +100,15 @@ func (s *ReportService) generateReport(reportID uuid.UUID, userID string) {
 	rep.Status = report.ReportStatusProcessing
 	_ = s.reportRepo.Update(ctx, rep)
 
-	filters := transaction.TransactionFilters{
+	pageSize := 10000
+	req := &transaction.ListTransactionsRequest{
 		From: &rep.PeriodStart,
 		To:   &rep.PeriodEnd,
 	}
+	req.Page = &pageSize
+	req.PageSize = &pageSize
 
-	result, err := s.transactionRepo.List(ctx, userID, &model.ListQuery{Page: 1, Limit: 10000}, filters)
+	result, err := s.transactionRepo.List(ctx, userID, req)
 	if err != nil {
 		rep.Status = report.ReportStatusFailed
 		_ = s.reportRepo.Update(ctx, rep)
