@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -47,112 +46,19 @@ func (r *TransactionRepo) GetByID(ctx context.Context, id uuid.UUID, userID stri
 
 	return &t, nil
 }
+func (r *TransactionRepo) List(ctx context.Context, userID string, req *transaction.ListTransactionsRequest) (*model.PaginatedResponse[transaction.Transaction], error) {
+	args := pgx.NamedArgs{"user_id": userID}
+	where := BuildFilterClause(req, args)
 
-func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters transaction.TransactionFilters) (*model.PaginatedResponse[transaction.Transaction], error) {
-	stmt := `
-		SELECT
-			id, user_id, category_id, amount_minor, currency, note, receipt_key, occurred_at, created_at
-		FROM
-			transactions
-		WHERE
-			user_id = @user_id
-	`
+	baseStmt := `SELECT id, user_id, category_id, amount_minor, currency, note, receipt_key, occurred_at, created_at
+		FROM transactions WHERE user_id = @user_id` + where
+	countStmt := `SELECT COUNT(*) FROM transactions WHERE user_id = @user_id` + where
 
-	countStmt := `
-		SELECT
-			COUNT(*)
-		FROM
-			transactions
-		WHERE
-			user_id = @user_id
-	`
-
-	args := pgx.NamedArgs{
-		"user_id": userID,
-	}
-	countArgs := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if filters.CategoryID != nil {
-		stmt += ` AND category_id = @category_id`
-		countStmt += ` AND category_id = @category_id`
-		args["category_id"] = *filters.CategoryID
-		countArgs["category_id"] = *filters.CategoryID
-	}
-
-	if filters.Type != nil {
-		stmt += ` AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND type = @type)`
-		countStmt += ` AND category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND type = @type)`
-		args["type"] = *filters.Type
-		countArgs["type"] = *filters.Type
-	}
-
-	if filters.From != nil {
-		stmt += ` AND occurred_at >= @from_date`
-		countStmt += ` AND occurred_at >= @from_date`
-		args["from_date"] = *filters.From
-		countArgs["from_date"] = *filters.From
-	}
-
-	if filters.To != nil {
-		stmt += ` AND occurred_at <= @to_date`
-		countStmt += ` AND occurred_at <= @to_date`
-		args["to_date"] = *filters.To
-		countArgs["to_date"] = *filters.To
-	}
-
-	if filters.MinAmount != nil {
-		stmt += ` AND amount_minor >= @min_amount`
-		countStmt += ` AND amount_minor >= @min_amount`
-		args["min_amount"] = *filters.MinAmount
-		countArgs["min_amount"] = *filters.MinAmount
-	}
-
-	if filters.MaxAmount != nil {
-		stmt += ` AND amount_minor <= @max_amount`
-		countStmt += ` AND amount_minor <= @max_amount`
-		args["max_amount"] = *filters.MaxAmount
-		countArgs["max_amount"] = *filters.MaxAmount
-	}
-
-	if query.Search != nil {
-		stmt += ` AND note ILIKE '%' || @search || '%'`
-		countStmt += ` AND note ILIKE '%' || @search || '%'`
-		args["search"] = *query.Search
-		countArgs["search"] = *query.Search
-	}
-
-	var total int
-	err := r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total count of transactions for user_id=%s: %w", userID, err)
-	}
-
-	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"amount_minor": true, "currency": true, "occurred_at": true, "created_at": true}, "occurred_at")
-	sortOrder := EnsureSortOrder(query.Order)
-	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	stmt += ` LIMIT @limit OFFSET @offset`
-	args["limit"] = query.Limit
-	args["offset"] = Offset(query)
-
-	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute get transactions query for user_id=%s: %w", userID, err)
-	}
-
-	transactions, err := pgx.CollectRows(rows, pgx.RowToStructByName[transaction.Transaction])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return EmptyPaginatedResponse[transaction.Transaction](query), nil
-		}
-		return nil, fmt.Errorf("failed to collect rows from table:transactions for user_id=%s: %w", userID, err)
-	}
-
-	return NewPaginatedResponse(transactions, query, total), nil
+	return RunPaginatedQuery[transaction.Transaction](
+		ctx, r.server.DB.Pool, baseStmt, countStmt, args, req.ToListQuery(),
+		map[string]bool{"amount_minor": true, "currency": true, "occurred_at": true, "created_at": true}, "occurred_at",
+	)
 }
-
 func (r *TransactionRepo) Create(ctx context.Context, t *transaction.Transaction) error {
 	stmt := `
 		INSERT INTO

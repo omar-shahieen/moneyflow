@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -47,81 +46,18 @@ func (r *CategoryRepo) GetByID(ctx context.Context, id uuid.UUID, userID string)
 	return &cat, nil
 }
 
-func (r *CategoryRepo) List(ctx context.Context, userID string, query *model.ListQuery, filters category.CategoryFilters) (*model.PaginatedResponse[category.Category], error) {
-	stmt := `
-		SELECT
-			id, user_id, name, type, created_at
-		FROM
-			categories
-		WHERE
-			user_id = @user_id
-	`
+// repository/category.go
+func (r *CategoryRepo) List(ctx context.Context, userID string, req *category.ListCategoriesRequest) (*model.PaginatedResponse[category.Category], error) {
+	args := pgx.NamedArgs{"user_id": userID}
+	where := BuildFilterClause(req, args)
 
-	args := pgx.NamedArgs{
-		"user_id": userID,
-	}
+	baseStmt := `SELECT id, user_id, name, type, created_at FROM categories WHERE user_id = @user_id` + where
+	countStmt := `SELECT COUNT(*) FROM categories WHERE user_id = @user_id` + where
 
-	if query.Search != nil {
-		stmt += ` AND name ILIKE '%' || @search || '%'`
-		args["search"] = *query.Search
-	}
-
-	if filters.Type != nil {
-		stmt += ` AND type = @type`
-		args["type"] = *filters.Type
-	}
-
-	sortColumn := EnsureSortColumn(query.Sort, map[string]bool{"name": true, "type": true, "created_at": true}, "created_at")
-	sortOrder := EnsureSortOrder(query.Order)
-	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
-
-	stmt += ` LIMIT @limit OFFSET @offset`
-	args["limit"] = query.Limit
-	args["offset"] = Offset(query)
-
-	rows, err := r.server.DB.Pool.Query(ctx, stmt, args)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute get categories query for user_id=%s: %w", userID, err)
-	}
-
-	categories, err := pgx.CollectRows(rows, pgx.RowToStructByName[category.Category])
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return EmptyPaginatedResponse[category.Category](query), nil
-		}
-		return nil, fmt.Errorf("failed to collect rows from table:categories for user_id=%s: %w", userID, err)
-	}
-
-	countStmt := `
-		SELECT
-			COUNT(*)
-		FROM
-			categories
-		WHERE
-			user_id = @user_id
-	`
-
-	countArgs := pgx.NamedArgs{
-		"user_id": userID,
-	}
-
-	if query.Search != nil {
-		countStmt += ` AND name ILIKE '%' || @search || '%'`
-		countArgs["search"] = *query.Search
-	}
-
-	if filters.Type != nil {
-		countStmt += ` AND type = @type`
-		countArgs["type"] = *filters.Type
-	}
-
-	var total int
-	err = r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total count of categories for user_id=%s: %w", userID, err)
-	}
-
-	return NewPaginatedResponse(categories, query, total), nil
+	return RunPaginatedQuery[category.Category](
+		ctx, r.server.DB.Pool, baseStmt, countStmt, args, req.ToListQuery(),
+		map[string]bool{"name": true, "type": true, "created_at": true}, "created_at",
+	)
 }
 
 func (r *CategoryRepo) Create(ctx context.Context, cat *category.Category) error {

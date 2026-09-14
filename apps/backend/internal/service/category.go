@@ -25,18 +25,13 @@ func NewCategoryService(server *server.Server, categoryRepo *repository.Category
 	}
 }
 
-func (s *CategoryService) GetCategories(ctx context.Context, userID string, query *category.ListCategoriesRequest) (*model.PaginatedResponse[category.Category], error) {
-	filters := category.CategoryFilters{}
-	if query.Type != "" {
-		filters.Type = &query.Type
-	}
-
-	categories, err := s.categoryRepo.List(ctx, userID, query.ToListQuery(), filters)
+func (s *CategoryService) GetCategories(ctx context.Context, userID string, req *category.ListCategoriesRequest) (*model.PaginatedResponse[category.Category], error) {
+	req.Normalize()
+	categories, err := s.categoryRepo.List(ctx, userID, req)
 	if err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to fetch categories")
 		return nil, err
 	}
-
 	return categories, nil
 }
 
