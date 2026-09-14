@@ -1,15 +1,29 @@
 package handler
 
 import (
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/newrelic/go-agent/v3/integrations/nrpkgerrors"
 	"github.com/newrelic/go-agent/v3/newrelic"
+	"github.com/omar-shahieen/moneyflow/internal/errs"
 	"github.com/omar-shahieen/moneyflow/internal/middleware"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/validation"
 )
+
+func convertFieldErrors(fieldErrors []validation.FieldError) []errs.FieldError {
+	var result []errs.FieldError
+	for _, fe := range fieldErrors {
+		result = append(result, errs.FieldError{
+			Field: fe.Field,
+			Error: fe.Error,
+		})
+	}
+	return result
+}
 
 // Handler provides base functionality for all handlers
 type Handler struct {
@@ -22,14 +36,14 @@ func NewHandler(s *server.Server) Handler {
 }
 
 // HandlerFunc represents a typed handler function that processes a request and returns a response
-type HandlerFunc[Req validation.Validatable, Res any] func(c echo.Context, req Req) (Res, error)
+type HandlerFunc[Req validation.Validatable, Res any] func(c *gin.Context, req Req) (Res, error)
 
 // HandlerFuncNoContent represents a typed handler function that processes a request without returning content
-type HandlerFuncNoContent[Req validation.Validatable] func(c echo.Context, req Req) error
+type HandlerFuncNoContent[Req validation.Validatable] func(c *gin.Context, req Req) error
 
 // ResponseHandler defines the interface for handling different response types
 type ResponseHandler interface {
-	Handle(c echo.Context, result interface{}) error
+	Handle(c *gin.Context, result interface{})
 	GetOperation() string
 	AddAttributes(txn *newrelic.Transaction, result interface{})
 }
@@ -39,8 +53,8 @@ type JSONResponseHandler struct {
 	status int
 }
 
-func (h JSONResponseHandler) Handle(c echo.Context, result interface{}) error {
-	return c.JSON(h.status, result)
+func (h JSONResponseHandler) Handle(c *gin.Context, result interface{}) {
+	c.JSON(h.status, result)
 }
 
 func (h JSONResponseHandler) GetOperation() string {
@@ -56,8 +70,8 @@ type NoContentResponseHandler struct {
 	status int
 }
 
-func (h NoContentResponseHandler) Handle(c echo.Context, result interface{}) error {
-	return c.NoContent(h.status)
+func (h NoContentResponseHandler) Handle(c *gin.Context, result interface{}) {
+	c.Status(h.status)
 }
 
 func (h NoContentResponseHandler) GetOperation() string {
@@ -75,10 +89,10 @@ type FileResponseHandler struct {
 	contentType string
 }
 
-func (h FileResponseHandler) Handle(c echo.Context, result interface{}) error {
+func (h FileResponseHandler) Handle(c *gin.Context, result interface{}) {
 	data := result.([]byte)
-	c.Response().Header().Set("Content-Disposition", "attachment; filename="+h.filename)
-	return c.Blob(h.status, h.contentType, data)
+	c.Header("Content-Disposition", "attachment; filename="+h.filename)
+	c.Data(h.status, h.contentType, data)
 }
 
 func (h FileResponseHandler) GetOperation() string {
@@ -96,31 +110,43 @@ func (h FileResponseHandler) AddAttributes(txn *newrelic.Transaction, result int
 	}
 }
 
+func writeError(c *gin.Context, err error) {
+	if he, ok := err.(*errs.HTTPError); ok {
+		c.JSON(he.Status, he)
+		return
+	}
+	c.JSON(http.StatusInternalServerError, errs.HTTPError{
+		Code:    "INTERNAL_ERROR",
+		Message: err.Error(),
+		Status:  http.StatusInternalServerError,
+	})
+}
+
 // handleRequest is the unified handler function that eliminates code duplication
 func handleRequest[Req validation.Validatable](
-	c echo.Context,
+	c *gin.Context,
 	req Req,
-	handler func(c echo.Context, req Req) (interface{}, error),
+	handler func(c *gin.Context, req Req) (interface{}, error),
 	responseHandler ResponseHandler,
-) error {
+) {
 	start := time.Now()
-	method := c.Request().Method
-	path := c.Path()
-	route := path
+	method := c.Request.Method
+	route := c.FullPath()
 
 	// Get New Relic transaction from context
-	txn := newrelic.FromContext(c.Request().Context())
+	txn := newrelic.FromContext(c.Request.Context())
 	if txn != nil {
 		txn.AddAttribute("handler.name", route)
-		// http.method and http.route are already set by nrecho middleware
+		// http.method and http.route are already set by nrgin middleware
 		responseHandler.AddAttributes(txn, nil)
 	}
 
 	// Get context-enhanced logger
+
 	loggerBuilder := middleware.GetLogger(c).With().
 		Str("operation", responseHandler.GetOperation()).
 		Str("method", method).
-		Str("path", path).
+		Str("path", c.Request.URL.Path).
 		Str("route", route)
 
 	// Add file-specific fields to logger if it's a file handler
@@ -137,21 +163,53 @@ func handleRequest[Req validation.Validatable](
 	logger.Info().Msg("handling request")
 
 	// Validation with observability
+	// ShouldBind (rather than Bind) is used deliberately: Gin's Bind writes its
+	// own 400 response and aborts the context, which would bypass the error
+	// handling / logging / tracing below.
 	validationStart := time.Now()
-	if err := validation.BindAndValidate(c, req); err != nil {
+	if err := c.ShouldBind(req); err != nil {
 		validationDuration := time.Since(validationStart)
-
+		errMsg := err.Error()
+		// Extract message from binding error, mirroring the Echo version's parsing
+		if parts := strings.Split(errMsg, ","); len(parts) > 1 {
+			if subParts := strings.Split(parts[1], "message="); len(subParts) > 1 {
+				errMsg = subParts[1]
+			}
+		}
+		bindErr := errs.NewBadRequestError(errMsg, false, nil, nil, nil)
 		logger.Error().
-			Err(err).
+			Err(bindErr).
 			Dur("validation_duration", validationDuration).
-			Msg("request validation failed")
-
+			Msg("request binding failed")
 		if txn != nil {
-			txn.NoticeError(nrpkgerrors.Wrap(err))
+			txn.NoticeError(nrpkgerrors.Wrap(bindErr))
 			txn.AddAttribute("validation.status", "failed")
 			txn.AddAttribute("validation.duration_ms", validationDuration.Milliseconds())
 		}
-		return err
+		c.Error(bindErr)
+		writeError(c, bindErr)
+		return
+	}
+	if msg, fieldErrors := validation.ValidateStruct(req); fieldErrors != nil {
+		validationDuration := time.Since(validationStart)
+		ve := &errs.HTTPError{
+			Code:    "VALIDATION_FAILED",
+			Message: msg,
+			Status:  422,
+			Errors:  convertFieldErrors(fieldErrors),
+		}
+		logger.Error().
+			Err(ve).
+			Dur("validation_duration", validationDuration).
+			Msg("request validation failed")
+		if txn != nil {
+			txn.NoticeError(nrpkgerrors.Wrap(ve))
+			txn.AddAttribute("validation.status", "failed")
+			txn.AddAttribute("validation.duration_ms", validationDuration.Milliseconds())
+		}
+		c.Error(ve)
+		writeError(c, ve)
+		return
 	}
 
 	validationDuration := time.Since(validationStart)
@@ -184,7 +242,9 @@ func handleRequest[Req validation.Validatable](
 			txn.AddAttribute("handler.duration_ms", handlerDuration.Milliseconds())
 			txn.AddAttribute("total.duration_ms", totalDuration.Milliseconds())
 		}
-		return err
+		c.Error(err)
+		writeError(c, err)
+		return
 	}
 
 	totalDuration := time.Since(start)
@@ -203,7 +263,7 @@ func handleRequest[Req validation.Validatable](
 		Dur("total_duration", totalDuration).
 		Msg("request completed successfully")
 
-	return responseHandler.Handle(c, result)
+	responseHandler.Handle(c, result)
 }
 
 // Handle wraps a handler with validation, error handling, logging, metrics, and tracing
@@ -212,9 +272,9 @@ func Handle[Req validation.Validatable, Res any](
 	handler HandlerFunc[Req, Res],
 	status int,
 	req Req,
-) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		handleRequest(c, req, func(c *gin.Context, req Req) (interface{}, error) {
 			return handler(c, req)
 		}, JSONResponseHandler{status: status})
 	}
@@ -227,9 +287,9 @@ func HandleFile[Req validation.Validatable](
 	req Req,
 	filename string,
 	contentType string,
-) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		handleRequest(c, req, func(c *gin.Context, req Req) (interface{}, error) {
 			return handler(c, req)
 		}, FileResponseHandler{
 			status:      status,
@@ -245,11 +305,30 @@ func HandleNoContent[Req validation.Validatable](
 	handler HandlerFuncNoContent[Req],
 	status int,
 	req Req,
-) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		return handleRequest(c, req, func(c echo.Context, req Req) (interface{}, error) {
+) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		handleRequest(c, req, func(c *gin.Context, req Req) (interface{}, error) {
 			err := handler(c, req)
 			return nil, err
 		}, NoContentResponseHandler{status: status})
 	}
+}
+
+func GetUserID(c *gin.Context) string {
+	return middleware.GetUserID(c)
+}
+
+func GetRequestID(c *gin.Context) string {
+	return middleware.GetRequestID(c)
+}
+
+var (
+	ErrUnauthorized = errs.NewUnauthorizedError("unauthorized access, please sign in first", false)
+	ErrInvalidID    = errs.NewBadRequestError("invalid ID format", false, nil, nil, nil)
+)
+
+type EmptyRequest struct{}
+
+func (r EmptyRequest) Validate() error {
+	return nil
 }

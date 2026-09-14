@@ -1,13 +1,12 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 	"github.com/omar-shahieen/moneyflow/internal/errs"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 )
@@ -22,53 +21,70 @@ func NewAuthMiddleware(s *server.Server) *AuthMiddleware {
 	}
 }
 
-func (auth *AuthMiddleware) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
-	return echo.WrapMiddleware(
-		clerkhttp.WithHeaderAuthorization(
-			clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				start := time.Now()
+func (auth *AuthMiddleware) RequireAuth() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Define Clerk's failure handler
+		failureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-
-				response := map[string]string{
-					"code":     "UNAUTHORIZED",
-					"message":  "Unauthorized",
-					"override": "false",
-					"status":   "401",
-				}
-
-				if err := json.NewEncoder(w).Encode(response); err != nil {
-					auth.server.Logger.Error().Err(err).Str("function", "RequireAuth").Dur(
-						"duration", time.Since(start)).Msg("failed to write JSON response")
-				} else {
-					auth.server.Logger.Error().Str("function", "RequireAuth").Dur("duration", time.Since(start)).Msg(
-						"could not get session claims from context")
-				}
-			}))))(func(c echo.Context) error {
-		start := time.Now()
-		claims, ok := clerk.SessionClaimsFromContext(c.Request().Context())
-
-		if !ok {
 			auth.server.Logger.Error().
 				Str("function", "RequireAuth").
-				Str("request_id", GetRequestID(c)).
 				Dur("duration", time.Since(start)).
 				Msg("could not get session claims from context")
-			return errs.NewUnauthorizedError("Unauthorized", false)
-		}
 
-		c.Set("user_id", claims.Subject)
-		c.Set("user_role", claims.ActiveOrganizationRole)
-		c.Set("permissions", claims.Claims.ActiveOrganizationPermissions)
+			// Use Gin's AbortWithStatusJSON instead of manual encoding
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
+				"code":     "UNAUTHORIZED",
+				"message":  "Unauthorized",
+				"override": "false",
+				"status":   "401",
+			})
+		})
 
-		auth.server.Logger.Info().
-			Str("function", "RequireAuth").
-			Str("user_id", claims.Subject).
-			Str("request_id", GetRequestID(c)).
-			Dur("duration", time.Since(start)).
-			Msg("user authenticated successfully")
+		// Initialize Clerk middleware with the custom failure handler
+		clerkMiddleware := clerkhttp.WithHeaderAuthorization(
+			clerkhttp.AuthorizationFailureHandler(failureHandler),
+		)
 
-		return next(c)
-	})
+		// Define the next step that executes if Clerk authentication succeeds
+		nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			// Clerk's middleware attaches claims to the *http.Request context.
+			// We must update Gin's request to preserve this context downstream.
+			c.Request = r
+
+			claims, ok := clerk.SessionClaimsFromContext(r.Context())
+			if !ok {
+				auth.server.Logger.Error().
+					Str("function", "RequireAuth").
+					Str("request_id", GetRequestID(c)). // Assuming GetRequestID accepts *gin.Context
+					Dur("duration", time.Since(start)).
+					Msg("could not get session claims from context")
+
+				// Forward the error to Gin's error handling and stop execution
+				c.Error(errs.NewUnauthorizedError("Unauthorized", false))
+				c.Abort()
+				return
+			}
+
+			// Set the claims in the Gin context
+			c.Set("user_id", claims.Subject)
+			c.Set("user_role", claims.ActiveOrganizationRole)
+			c.Set("permissions", claims.Claims.ActiveOrganizationPermissions)
+
+			auth.server.Logger.Info().
+				Str("function", "RequireAuth").
+				Str("user_id", claims.Subject).
+				Str("request_id", GetRequestID(c)).
+				Dur("duration", time.Since(start)).
+				Msg("user authenticated successfully")
+
+			// Proceed to the actual Gin handler
+			c.Next()
+		})
+
+		// Execute the standard HTTP middleware chain
+		clerkMiddleware(nextHandler).ServeHTTP(c.Writer, c.Request)
+	}
 }

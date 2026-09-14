@@ -7,7 +7,7 @@ import (
 
 	"github.com/omar-shahieen/moneyflow/internal/server"
 
-	"github.com/labstack/echo/v4"
+	"github.com/gin-gonic/gin"
 )
 
 type OpenAPIHandler struct {
@@ -20,19 +20,15 @@ func NewOpenAPIHandler(s *server.Server) *OpenAPIHandler {
 	}
 }
 
-func (h *OpenAPIHandler) ServeOpenAPIUI(c echo.Context) error {
+func (h *OpenAPIHandler) ServeOpenAPIUI(c *gin.Context) {
 	templateBytes, err := os.ReadFile("static/openapi.html")
-	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Header("Cache-Control", "no-cache")
 	if err != nil {
-		return fmt.Errorf("failed to read OpenAPI UI template: %w", err)
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": fmt.Sprintf("failed to read OpenAPI UI template: %v", err),
+		})
+		return
 	}
 
-	templateString := string(templateBytes)
-
-	err = c.HTML(http.StatusOK, templateString)
-	if err != nil {
-		return fmt.Errorf("failed to write HTML response: %w", err)
-	}
-
-	return nil
+	c.Data(http.StatusOK, "text/html; charset=utf-8", templateBytes)
 }

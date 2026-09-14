@@ -1,12 +1,11 @@
 package router
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/omar-shahieen/moneyflow/internal/handler"
-
-	"github.com/labstack/echo/v4"
 )
 
-func registerSystemRoutes(r *echo.Echo, h *handler.Handlers) {
+func registerSystemRoutes(r *gin.Engine, h *handler.Handlers) {
 	r.GET("/status", h.Health.CheckHealth)
 
 	r.Static("/static", "static")
