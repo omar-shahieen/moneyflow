@@ -23,11 +23,11 @@ commonLabels:
 # Image names patched by overlays and the release pipeline
 images:
   - name: moneyflow-api
-    newName: ghcr.io/omar-shahieen/moneyflow/api
-    newTag: latest
+    newName: omarmohamed04/moneyflow
+    newTag: api-latest
   - name: moneyflow-worker
-    newName: ghcr.io/omar-shahieen/moneyflow/api
-    newTag: latest
+    newName: omarmohamed04/moneyflow
+    newTag: api-latest
   - name: moneyflow-frontend
-    newName: ghcr.io/omar-shahieen/moneyflow/frontend
-    newTag: latest
+    newName: omarmohamed04/moneyflow
+    newTag: frontend-latest

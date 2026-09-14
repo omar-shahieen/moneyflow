@@ -22,9 +22,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_BACKEND:  ghcr.io/${{ github.repository }}/api
-  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
+  REGISTRY: docker.io
+  IMAGE_BASE: omarmohamed04/moneyflow
+  IMAGE_BACKEND: omarmohamed04/moneyflow
+  IMAGE_FRONTEND: omarmohamed04/moneyflow
 
 jobs:
   # ──────────────────────────────────────────────────────────
@@ -46,14 +47,14 @@ jobs:
       - name: Verify backend image signature
         run: |
           cosign verify \
-            ${{ env.IMAGE_BACKEND }}@${{ inputs.backend_digest }} \
+            ${{ env.IMAGE_BASE }}@${{ inputs.backend_digest }} \
             --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/release.yml" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
       - name: Verify frontend image signature
         run: |
           cosign verify \
-            ${{ env.IMAGE_FRONTEND }}@${{ inputs.frontend_digest }} \
+            ${{ env.IMAGE_BASE }}@${{ inputs.frontend_digest }} \
             --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/release.yml" \
             --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
 
@@ -70,8 +71,8 @@ jobs:
       contents: read
 
     env:
-      BACKEND_IMAGE:  ${{ env.IMAGE_BACKEND }}@${{ inputs.backend_digest }}
-      FRONTEND_IMAGE: ${{ env.IMAGE_FRONTEND }}@${{ inputs.frontend_digest }}
+      BACKEND_IMAGE:  ${{ env.IMAGE_BASE }}@${{ inputs.backend_digest }}
+      FRONTEND_IMAGE: ${{ env.IMAGE_BASE }}@${{ inputs.frontend_digest }}
 
     steps:
       - uses: actions/checkout@v4

@@ -12,10 +12,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.24"
+  GO_VERSION: "1.27.0"
   BUN_VERSION: "1.2"
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: docker.io
+  IMAGE_NAME: omarmohamed04/moneyflow
 
 jobs:
   # ──────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ jobs:
           context: .
           file: Dockerfile
           push: false
-          tags: moneyflow-api:ci-${{ github.sha }}
+          tags: ${{ env.IMAGE_NAME }}:api-ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
@@ -183,7 +183,7 @@ jobs:
           context: .
           file: Dockerfile.frontend
           push: false
-          tags: moneyflow-frontend:ci-${{ github.sha }}
+          tags: ${{ env.IMAGE_NAME }}:frontend-ci-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -211,7 +211,7 @@ jobs:
             -e MONEYFLOW_REDIS.ADDRESS=localhost:6379 \
             -e MONEYFLOW_AUTH.SECRET_KEY=ci-test-key \
             -e MONEYFLOW_INTEGRATION.RESEND_API_KEY=re_test \
-            moneyflow-api:ci-${{ github.sha }} || true
+            ${{ env.IMAGE_NAME }}:api-ci-${{ github.sha }} || true
           sleep 5
           docker logs api-smoke || true
           docker stop api-smoke || true
@@ -220,7 +220,7 @@ jobs:
       - name: Scan backend image for vulnerabilities
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: moneyflow-api:ci-${{ github.sha }}
+          image-ref: ${{ env.IMAGE_NAME }}:api-ci-${{ github.sha }}
           format: table
           exit-code: "1"
           ignore-unfixed: true

@@ -30,7 +30,7 @@ moneyflow/
 
 ### Prerequisites
 
-- Go 1.24 or higher
+- Go 1.27 or higher
 - Node.js 22+ and Bun
 - PostgreSQL 16+
 - Redis 8+

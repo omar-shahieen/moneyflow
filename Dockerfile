@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────
 # Stage 1 — Builder
 # ─────────────────────────────────────────────
-FROM golang:1.24-alpine AS builder
+FROM golang:1.27-alpine AS builder
 
 # Install git and ca-certs (needed for go mod download over HTTPS)
 RUN apk add --no-cache git ca-certificates tzdata
@@ -39,6 +39,7 @@ FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 LABEL org.opencontainers.image.title="moneyflow-api"
 LABEL org.opencontainers.image.description="MoneyFlow Go backend (API + worker + migrate)"
 LABEL org.opencontainers.image.source="https://github.com/omar-shahieen/moneyflow"
+LABEL org.opencontainers.image.name="omarmohamed04/moneyflow"
 
 # Copy timezone data so TIMESTAMPTZ works correctly
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
