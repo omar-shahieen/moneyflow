@@ -103,6 +103,13 @@ func (r *TransactionRepo) List(ctx context.Context, userID string, query *model.
 		countArgs["to_date"] = *filters.To
 	}
 
+	if query.Search != nil {
+		stmt += ` AND note ILIKE '%' || @search || '%'`
+		countStmt += ` AND note ILIKE '%' || @search || '%'`
+		args["search"] = *query.Search
+		countArgs["search"] = *query.Search
+	}
+
 	var total int
 	err := r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
 	if err != nil {

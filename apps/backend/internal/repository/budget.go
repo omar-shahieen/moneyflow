@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,8 +63,13 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 		"user_id": userID,
 	}
 
-	sortColumn := "b.created_at"
-	sortOrder := "desc"
+	if query.Search != nil {
+		stmt += ` AND b.category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
+		args["search"] = *query.Search
+	}
+
+	sortColumn := r.ensureSortColumn(query.Sort)
+	sortOrder := r.ensureSortOrder(query.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
 	stmt += ` LIMIT @limit OFFSET @offset`
@@ -121,8 +127,17 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, query *model
 			bm.user_id = @user_id
 	`
 
+	countArgs := pgx.NamedArgs{
+		"user_id": userID,
+	}
+
+	if query.Search != nil {
+		countStmt += ` AND b.category_id IN (SELECT id FROM categories WHERE user_id = @user_id AND name ILIKE '%' || @search || '%')`
+		countArgs["search"] = *query.Search
+	}
+
 	var total int
-	err = r.server.DB.Pool.QueryRow(ctx, countStmt, pgx.NamedArgs{"user_id": userID}).Scan(&total)
+	err = r.server.DB.Pool.QueryRow(ctx, countStmt, countArgs).Scan(&total)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get total count of budgets for user_id=%s: %w", userID, err)
 	}
@@ -347,4 +362,26 @@ func (r *BudgetMemberRepo) CountByBudget(ctx context.Context, budgetID uuid.UUID
 		return 0, fmt.Errorf("failed to count budget members for budget_id=%s: %w", budgetID.String(), err)
 	}
 	return count, nil
+}
+
+func (r *BudgetRepo) ensureSortColumn(sort *string) string {
+	allowed := map[string]bool{
+		"created_at":          true,
+		"monthly_limit_minor": true,
+		"currency":            true,
+	}
+	if sort != nil && allowed[*sort] {
+		return "b." + *sort
+	}
+	return "b.created_at"
+}
+
+func (r *BudgetRepo) ensureSortOrder(order *string) string {
+	if order != nil {
+		o := strings.ToLower(*order)
+		if o == "asc" || o == "desc" {
+			return o
+		}
+	}
+	return "desc"
 }

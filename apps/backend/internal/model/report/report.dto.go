@@ -18,6 +18,13 @@ func (r GetReportRequest) Validate() error {
 
 type ListReportsRequest struct {
 	model.PaginationRequest
+	Status string `form:"status" binding:"omitempty,oneof=pending processing ready failed"`
+	Format string `form:"format" binding:"omitempty,oneof=pdf csv"`
+}
+
+type ReportFilters struct {
+	Status *string
+	Format *string
 }
 
 type CreateReportRequest struct {

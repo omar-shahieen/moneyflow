@@ -30,6 +30,7 @@ type PaginationRequest struct {
 	PageSize int    `form:"page_size" binding:"omitempty,min=1,max=100"`
 	Sort     string `form:"sort" binding:"omitempty"`
 	Order    string `form:"order" binding:"omitempty,oneof=asc desc"`
+	Search   string `form:"search" binding:"omitempty,max=200"`
 }
 
 func (r *PaginationRequest) Normalize() {
@@ -52,18 +53,22 @@ func (r PaginationRequest) Validate() error {
 
 func (r PaginationRequest) ToListQuery() *ListQuery {
 	r.Normalize()
-	var sort, order *string
+	var sort, order, search *string
 	if r.Sort != "" {
 		sort = &r.Sort
 	}
 	if r.Order != "" {
 		order = &r.Order
 	}
+	if r.Search != "" {
+		search = &r.Search
+	}
 	return &ListQuery{
-		Page:  r.Page,
-		Limit: r.PageSize,
-		Sort:  sort,
-		Order: order,
+		Page:   r.Page,
+		Limit:  r.PageSize,
+		Sort:   sort,
+		Order:  order,
+		Search: search,
 	}
 }
 

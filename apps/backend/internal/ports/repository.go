@@ -73,7 +73,7 @@ type RecurringRuleRepository interface {
 
 type ReportRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID, userID string) (*report.Report, error)
-	List(ctx context.Context, userID string, query *model.ListQuery) (*model.PaginatedResponse[report.Report], error)
+	List(ctx context.Context, userID string, query *model.ListQuery, filters report.ReportFilters) (*model.PaginatedResponse[report.Report], error)
 	Create(ctx context.Context, r *report.Report) error
 	Update(ctx context.Context, r *report.Report) error
 	CountByUser(ctx context.Context, userID string) (int, error)
