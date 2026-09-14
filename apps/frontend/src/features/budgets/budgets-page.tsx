@@ -10,6 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
+import { SearchInput } from "@/components/ui/search-input";
+import { SortSelect } from "@/components/ui/sort-select";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
@@ -28,7 +30,7 @@ const DEFAULT_FILTERS: BudgetFilters = {
 };
 
 export function BudgetsPage() {
-  const { filters, setPage, setPageSize } =
+  const { filters, setFilter, setPage, setPageSize } =
     useUrlFilters<BudgetFilters>({
       defaults: DEFAULT_FILTERS,
     });
@@ -77,6 +79,28 @@ export function BudgetsPage() {
           <Plus className="mr-2 h-4 w-4" />
           Add Budget
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-4">
+        <SearchInput
+          value={filters.search}
+          onChange={(v) => setFilter("search" as any, v)}
+          placeholder="Search budgets..."
+          className="w-64"
+        />
+        <SortSelect
+          options={[
+            { value: "created_at", label: "Created" },
+            { value: "monthly_limit_minor", label: "Limit" },
+            { value: "currency", label: "Currency" },
+          ]}
+          value={filters.sort}
+          order={filters.order}
+          onChange={(sort, order) => {
+            setFilter("sort" as any, sort);
+            setFilter("order" as any, order);
+          }}
+        />
       </div>
 
       {budgets.length === 0 ? (

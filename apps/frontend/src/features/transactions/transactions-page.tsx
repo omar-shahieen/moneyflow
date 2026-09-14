@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -14,6 +15,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { DateRangeFilter } from "@/components/ui/date-range-filter";
 import { SelectFilter } from "@/components/ui/select-filter";
 import { SortSelect } from "@/components/ui/sort-select";
+import { SearchInput } from "@/components/ui/search-input";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
@@ -94,6 +96,12 @@ export function TransactionsPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-4">
+        <SearchInput
+          value={filters.search}
+          onChange={(v) => setFilter("search" as any, v)}
+          placeholder="Search transactions..."
+          className="w-64"
+        />
         <DateRangeFilter
           from={filters.from}
           to={filters.to}
@@ -117,6 +125,28 @@ export function TransactionsPage() {
           value={filters.category_id}
           onChange={(v) => setFilter("category_id" as any, v)}
         />
+        <div className="flex items-end gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Min Amount</label>
+            <Input
+              type="number"
+              placeholder="0"
+              value={filters.min_amount ?? ""}
+              onChange={(e) => setFilter("min_amount" as any, e.target.value || undefined)}
+              className="w-28"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Max Amount</label>
+            <Input
+              type="number"
+              placeholder="∞"
+              value={filters.max_amount ?? ""}
+              onChange={(e) => setFilter("max_amount" as any, e.target.value || undefined)}
+              className="w-28"
+            />
+          </div>
+        </div>
         <SortSelect
           options={SORT_OPTIONS}
           value={filters.sort}

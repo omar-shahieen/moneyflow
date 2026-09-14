@@ -20,6 +20,9 @@ export type Budget = {
 export type BudgetFilters = {
   page?: number;
   page_size?: number;
+  search?: string;
+  sort?: string;
+  order?: "asc" | "desc";
 };
 
 export type CreateBudgetInput = {
@@ -40,6 +43,9 @@ export function useBudgets(filters?: BudgetFilters) {
       const params = new URLSearchParams();
       if (filters?.page) params.set("page", String(filters.page));
       if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.search) params.set("search", filters.search);
+      if (filters?.sort) params.set("sort", filters.sort);
+      if (filters?.order) params.set("order", filters.order);
 
       const response = await apiClient.get(`/budgets?${params.toString()}`);
       return response.data as PaginatedResponse<Budget>;

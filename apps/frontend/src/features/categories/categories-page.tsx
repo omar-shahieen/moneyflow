@@ -13,6 +13,7 @@ import {
 import { Pagination } from "@/components/ui/pagination";
 import { SelectFilter } from "@/components/ui/select-filter";
 import { SortSelect } from "@/components/ui/sort-select";
+import { SearchInput } from "@/components/ui/search-input";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
@@ -87,6 +88,12 @@ export function CategoriesPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-4">
+        <SearchInput
+          value={filters.search}
+          onChange={(v) => setFilter("search" as any, v)}
+          placeholder="Search categories..."
+          className="w-64"
+        />
         <SelectFilter
           label="Type"
           options={[

@@ -21,10 +21,13 @@ export type Transaction = {
 export type TransactionFilters = {
   page?: number;
   page_size?: number;
+  search?: string;
   from?: string;
   to?: string;
   category_id?: string;
   type?: "income" | "expense";
+  min_amount?: string;
+  max_amount?: string;
   sort?: string;
   order?: "asc" | "desc";
 };
@@ -60,10 +63,13 @@ export function useTransactions(filters?: TransactionFilters) {
       const params = new URLSearchParams();
       if (filters?.page) params.set("page", String(filters.page));
       if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.search) params.set("search", filters.search);
       if (filters?.from) params.set("start_date", filters.from);
       if (filters?.to) params.set("end_date", filters.to);
       if (filters?.category_id) params.set("category_id", filters.category_id);
       if (filters?.type) params.set("type", filters.type);
+      if (filters?.min_amount) params.set("min_amount", filters.min_amount);
+      if (filters?.max_amount) params.set("max_amount", filters.max_amount);
       if (filters?.sort) params.set("sort", filters.sort);
       if (filters?.order) params.set("order", filters.order);
 

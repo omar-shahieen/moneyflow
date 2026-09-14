@@ -18,6 +18,9 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
+import { SearchInput } from "@/components/ui/search-input";
+import { SelectFilter } from "@/components/ui/select-filter";
+import { SortSelect } from "@/components/ui/sort-select";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
@@ -32,7 +35,7 @@ const DEFAULT_FILTERS: ReportFilters = {
 };
 
 export function ReportsPage() {
-  const { filters, setPage, setPageSize } =
+  const { filters, setFilter, setPage, setPageSize } =
     useUrlFilters<ReportFilters>({
       defaults: DEFAULT_FILTERS,
     });
@@ -195,6 +198,48 @@ export function ReportsPage() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Report History</h2>
+        <div className="flex flex-wrap items-end gap-4">
+          <SearchInput
+            value={filters.search}
+            onChange={(v) => setFilter("search" as any, v)}
+            placeholder="Search reports..."
+            className="w-64"
+          />
+          <SelectFilter
+            label="Status"
+            options={[
+              { value: "pending", label: "Pending" },
+              { value: "processing", label: "Processing" },
+              { value: "ready", label: "Ready" },
+              { value: "failed", label: "Failed" },
+            ]}
+            value={filters.status}
+            onChange={(v) => setFilter("status" as any, v)}
+          />
+          <SelectFilter
+            label="Format"
+            options={[
+              { value: "csv", label: "CSV" },
+              { value: "pdf", label: "PDF" },
+            ]}
+            value={filters.format}
+            onChange={(v) => setFilter("format" as any, v)}
+          />
+          <SortSelect
+            options={[
+              { value: "created_at", label: "Created" },
+              { value: "period_start", label: "Period Start" },
+              { value: "period_end", label: "Period End" },
+              { value: "status", label: "Status" },
+            ]}
+            value={filters.sort}
+            order={filters.order}
+            onChange={(sort, order) => {
+              setFilter("sort" as any, sort);
+              setFilter("order" as any, order);
+            }}
+          />
+        </div>
         {reports.length === 0 ? (
           <EmptyState
             icon={<FileText className="h-8 w-8 text-muted-foreground" />}

@@ -15,6 +15,7 @@ export type Category = {
 export type CategoryFilters = {
   page?: number;
   page_size?: number;
+  search?: string;
   type?: "income" | "expense";
   sort?: string;
   order?: "asc" | "desc";
@@ -37,6 +38,7 @@ export function useCategories(filters?: CategoryFilters) {
       const params = new URLSearchParams();
       if (filters?.page) params.set("page", String(filters.page));
       if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.search) params.set("search", filters.search);
       if (filters?.type) params.set("type", filters.type);
       if (filters?.sort) params.set("sort", filters.sort);
       if (filters?.order) params.set("order", filters.order);

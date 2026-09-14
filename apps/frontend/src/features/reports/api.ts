@@ -23,6 +23,11 @@ export type Report = {
 export type ReportFilters = {
   page?: number;
   page_size?: number;
+  search?: string;
+  sort?: string;
+  order?: "asc" | "desc";
+  status?: ReportStatus;
+  format?: ReportFormat;
 };
 
 export type CreateReportInput = {
@@ -38,6 +43,11 @@ export function useReports(filters?: ReportFilters) {
       const params = new URLSearchParams();
       if (filters?.page) params.set("page", String(filters.page));
       if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.search) params.set("search", filters.search);
+      if (filters?.sort) params.set("sort", filters.sort);
+      if (filters?.order) params.set("order", filters.order);
+      if (filters?.status) params.set("status", filters.status);
+      if (filters?.format) params.set("format", filters.format);
 
       const response = await apiClient.get(`/reports?${params.toString()}`);
       return response.data as PaginatedResponse<Report>;
