@@ -19,10 +19,6 @@ RUN bun install --frozen-lockfile
 COPY packages/ ./packages/
 COPY apps/frontend/ ./apps/frontend/
 
-# Build shared packages first
-RUN bun nx run openapi:build --if-present
-RUN bun nx run zod:build --if-present
-
 # Build frontend (Vite produces /build/apps/frontend/dist)
 RUN bun nx run frontend:build
 
