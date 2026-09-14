@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Download, FileText, CheckCircle, XCircle, Clock } from "lucide-react";
+import {
+  Download,
+  FileText,
+  CheckCircle,
+  XCircle,
+  Clock,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,15 +17,27 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Pagination } from "@/components/ui/pagination";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
 import { useReports, useReport, useCreateReport } from "./api";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { toast } from "sonner";
-import type { ReportFormat } from "./api";
+import type { ReportFormat, ReportFilters } from "./api";
+
+const DEFAULT_FILTERS: ReportFilters = {
+  page: 1,
+  page_size: 10,
+};
 
 export function ReportsPage() {
-  const { data: reports, isLoading, error, refetch } = useReports();
+  const { filters, setPage, setPageSize } =
+    useUrlFilters<ReportFilters>({
+      defaults: DEFAULT_FILTERS,
+    });
+
+  const { data, isLoading, error, refetch } = useReports(filters);
   const createReport = useCreateReport();
   const [format, setFormat] = useState<ReportFormat>("csv");
   const [periodStart, setPeriodStart] = useState("");
@@ -35,6 +53,12 @@ export function ReportsPage() {
   if (error) {
     return <ErrorAlert error={error} onRetry={() => refetch()} />;
   }
+
+  const reports = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+  const page = data?.page ?? filters.page ?? 1;
+  const limit = data?.limit ?? filters.page_size ?? 10;
 
   const handleGenerate = async () => {
     if (!periodStart || !periodEnd) {
@@ -144,13 +168,21 @@ export function ReportsPage() {
                 <span className="text-sm font-medium">
                   Current Report ({activeReport.format.toUpperCase()})
                 </span>
-                <Badge variant={activeReport.status === "ready" ? "default" : "secondary"}>
+                <Badge
+                  variant={
+                    activeReport.status === "ready" ? "default" : "secondary"
+                  }
+                >
                   {activeReport.status}
                 </Badge>
               </div>
               {activeReport.status === "ready" && activeReport.download_url && (
                 <Button size="sm" asChild>
-                  <a href={activeReport.download_url} target="_blank" rel="noopener noreferrer">
+                  <a
+                    href={activeReport.download_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     <Download className="mr-2 h-4 w-4" />
                     Download
                   </a>
@@ -163,45 +195,64 @@ export function ReportsPage() {
 
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Report History</h2>
-        {!reports || reports.length === 0 ? (
+        {reports.length === 0 ? (
           <EmptyState
             icon={<FileText className="h-8 w-8 text-muted-foreground" />}
             title="No reports yet"
             description="Generate your first report to get started."
           />
         ) : (
-          <div className="space-y-3">
-            {reports.map((report) => (
-              <Card key={report.id}>
-                <CardContent className="flex items-center justify-between py-4">
-                  <div className="flex items-center gap-3">
-                    {getStatusIcon(report.status)}
-                    <div>
-                      <p className="text-sm font-medium">
-                        {report.format.toUpperCase()} Report
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(report.period_start).toLocaleDateString()} -{" "}
-                        {new Date(report.period_end).toLocaleDateString()}
-                      </p>
+          <>
+            <div className="space-y-3">
+              {reports.map((report) => (
+                <Card key={report.id}>
+                  <CardContent className="flex items-center justify-between py-4">
+                    <div className="flex items-center gap-3">
+                      {getStatusIcon(report.status)}
+                      <div>
+                        <p className="text-sm font-medium">
+                          {report.format.toUpperCase()} Report
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(report.period_start).toLocaleDateString()} -{" "}
+                          {new Date(report.period_end).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge variant={report.status === "ready" ? "default" : "secondary"}>
-                      {report.status}
-                    </Badge>
-                    {report.status === "ready" && report.download_url && (
-                      <Button size="sm" variant="ghost" asChild>
-                        <a href={report.download_url} target="_blank" rel="noopener noreferrer">
-                          <Download className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    <div className="flex items-center gap-3">
+                      <Badge
+                        variant={
+                          report.status === "ready" ? "default" : "secondary"
+                        }
+                      >
+                        {report.status}
+                      </Badge>
+                      {report.status === "ready" && report.download_url && (
+                        <Button size="sm" variant="ghost" asChild>
+                          <a
+                            href={report.download_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Download className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              total={total}
+              limit={limit}
+              onPageChange={setPage}
+              onLimitChange={(size) => setPageSize(size)}
+            />
+          </>
         )}
       </div>
     </div>

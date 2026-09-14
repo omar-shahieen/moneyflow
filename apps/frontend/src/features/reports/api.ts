@@ -3,6 +3,7 @@ import { apiClient } from "@/api/client";
 import { queryKeys } from "@/api/queryKeys";
 import { normalizeError } from "@/api/client";
 import type { NormalizedError } from "@/api/errors";
+import type { PaginatedResponse } from "@/api/helpers";
 
 export type ReportFormat = "pdf" | "csv";
 export type ReportStatus = "pending" | "processing" | "ready" | "failed";
@@ -19,18 +20,27 @@ export type Report = {
   completed_at: string | null;
 };
 
+export type ReportFilters = {
+  page?: number;
+  page_size?: number;
+};
+
 export type CreateReportInput = {
   format: ReportFormat;
   period_start: string;
   period_end: string;
 };
 
-export function useReports() {
+export function useReports(filters?: ReportFilters) {
   return useQuery({
-    queryKey: queryKeys.reports.lists(),
+    queryKey: queryKeys.reports.list(filters),
     queryFn: async () => {
-      const response = await apiClient.get("/reports");
-      return response.data as Report[];
+      const params = new URLSearchParams();
+      if (filters?.page) params.set("page", String(filters.page));
+      if (filters?.page_size) params.set("page_size", String(filters.page_size));
+
+      const response = await apiClient.get(`/reports?${params.toString()}`);
+      return response.data as PaginatedResponse<Report>;
     },
   });
 }

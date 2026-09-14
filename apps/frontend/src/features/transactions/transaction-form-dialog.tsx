@@ -43,12 +43,13 @@ export function TransactionFormDialog({
   onOpenChange,
   transactionId,
 }: TransactionFormDialogProps) {
-  const { data: categories } = useCategories();
+  const { data: categoriesData } = useCategories({ page_size: 100 });
   const { data: transactions } = useTransactions();
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
   const isEditing = !!transactionId;
   const transaction = transactions?.data?.find((t) => t.id === transactionId);
+  const categories = categoriesData?.data ?? [];
 
   const {
     register,
@@ -138,7 +139,7 @@ export function TransactionFormDialog({
               {...register("category_id")}
             >
               <option value="">Select a category</option>
-              {categories?.map((cat) => (
+              {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name} ({cat.type})
                 </option>

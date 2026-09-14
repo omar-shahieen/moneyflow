@@ -3,12 +3,21 @@ import { apiClient } from "@/api/client";
 import { queryKeys } from "@/api/queryKeys";
 import { normalizeError } from "@/api/client";
 import type { NormalizedError } from "@/api/errors";
+import type { PaginatedResponse } from "@/api/helpers";
 
 export type Category = {
   id: string;
   name: string;
   type: "income" | "expense";
   created_at: string;
+};
+
+export type CategoryFilters = {
+  page?: number;
+  page_size?: number;
+  type?: "income" | "expense";
+  sort?: string;
+  order?: "asc" | "desc";
 };
 
 export type CreateCategoryInput = {
@@ -21,12 +30,19 @@ export type UpdateCategoryInput = {
   type?: "income" | "expense";
 };
 
-export function useCategories() {
+export function useCategories(filters?: CategoryFilters) {
   return useQuery({
-    queryKey: queryKeys.categories.lists(),
+    queryKey: queryKeys.categories.list(filters),
     queryFn: async () => {
-      const response = await apiClient.get("/categories");
-      return response.data as Category[];
+      const params = new URLSearchParams();
+      if (filters?.page) params.set("page", String(filters.page));
+      if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.type) params.set("type", filters.type);
+      if (filters?.sort) params.set("sort", filters.sort);
+      if (filters?.order) params.set("order", filters.order);
+
+      const response = await apiClient.get(`/categories?${params.toString()}`);
+      return response.data as PaginatedResponse<Category>;
     },
   });
 }

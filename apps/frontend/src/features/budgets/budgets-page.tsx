@@ -9,18 +9,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Pagination } from "@/components/ui/pagination";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
 import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { useBudgets, useDeleteBudget } from "./api";
 import { BudgetFormDialog } from "./budget-form-dialog";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import type { BudgetFilters } from "./api";
+
+const DEFAULT_FILTERS: BudgetFilters = {
+  page: 1,
+  page_size: 12,
+};
 
 export function BudgetsPage() {
-  const { data: budgets, isLoading, error, refetch } = useBudgets();
+  const { filters, setPage, setPageSize } =
+    useUrlFilters<BudgetFilters>({
+      defaults: DEFAULT_FILTERS,
+    });
+
+  const { data, isLoading, error, refetch } = useBudgets(filters);
   const deleteBudget = useDeleteBudget();
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -33,6 +46,12 @@ export function BudgetsPage() {
   if (error) {
     return <ErrorAlert error={error} onRetry={() => refetch()} />;
   }
+
+  const budgets = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+  const page = data?.page ?? filters.page ?? 1;
+  const limit = data?.limit ?? filters.page_size ?? 12;
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -60,7 +79,7 @@ export function BudgetsPage() {
         </Button>
       </div>
 
-      {!budgets || budgets.length === 0 ? (
+      {budgets.length === 0 ? (
         <EmptyState
           icon={<PiggyBank className="h-8 w-8 text-muted-foreground" />}
           title="No budgets"
@@ -73,69 +92,86 @@ export function BudgetsPage() {
           }
         />
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {budgets.map((budget) => {
-            const usage = budget.current_usage_minor ?? 0;
-            const percentage = budget.percentage_used ?? 0;
-            const isExceeded = budget.is_exceeded ?? percentage > 100;
+        <>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {budgets.map((budget) => {
+              const usage = budget.current_usage_minor ?? 0;
+              const percentage = budget.percentage_used ?? 0;
+              const isExceeded = budget.is_exceeded ?? percentage > 100;
 
-            return (
-              <Card key={budget.id}>
-                <CardHeader className="pb-2">
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">
-                      {budget.category_name ?? "Unknown"}
-                    </CardTitle>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setEditId(budget.id)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteId(budget.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
+              return (
+                <Card key={budget.id}>
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">
+                        {budget.category_name ?? "Unknown"}
+                      </CardTitle>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditId(budget.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(budget.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                  <CardDescription>
-                    {formatMoney(budget.monthly_limit_minor, budget.currency)} / month
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Spent</span>
-                      <span className={cn("font-medium", isExceeded && "text-destructive")}>
-                        {formatMoney(usage, budget.currency)}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn(
-                          "h-full rounded-full transition-all",
-                          isExceeded ? "bg-destructive" : "bg-primary"
+                    <CardDescription>
+                      {formatMoney(budget.monthly_limit_minor, budget.currency)}{" "}
+                      / month
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">Spent</span>
+                        <span
+                          className={cn(
+                            "font-medium",
+                            isExceeded && "text-destructive"
+                          )}
+                        >
+                          {formatMoney(usage, budget.currency)}
+                        </span>
+                      </div>
+                      <div className="h-2 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            isExceeded ? "bg-destructive" : "bg-primary"
+                          )}
+                          style={{ width: `${Math.min(percentage, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{Math.round(percentage)}% used</span>
+                        {isExceeded && (
+                          <Badge variant="destructive">Exceeded</Badge>
                         )}
-                        style={{ width: `${Math.min(percentage, 100)}%` }}
-                      />
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{Math.round(percentage)}% used</span>
-                      {isExceeded && (
-                        <Badge variant="destructive">Exceeded</Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+            onLimitChange={(size) => setPageSize(size)}
+          />
+        </>
       )}
 
       <BudgetFormDialog open={createOpen} onOpenChange={setCreateOpen} />

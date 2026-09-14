@@ -36,12 +36,14 @@ export function BudgetFormDialog({
   onOpenChange,
   budgetId,
 }: BudgetFormDialogProps) {
-  const { data: categories } = useCategories();
-  const { data: budgets } = useBudgets();
+  const { data: categoriesData } = useCategories({ page_size: 100 });
+  const { data: budgetsData } = useBudgets({ page_size: 100 });
   const createBudget = useCreateBudget();
   const updateBudget = useUpdateBudget();
   const isEditing = !!budgetId;
-  const budget = budgets?.find((b) => b.id === budgetId);
+  const categories = categoriesData?.data ?? [];
+  const budgets = budgetsData?.data ?? [];
+  const budget = budgets.find((b) => b.id === budgetId);
 
   const {
     register,
@@ -122,7 +124,7 @@ export function BudgetFormDialog({
             >
               <option value="">Select a category</option>
               {categories
-                ?.filter((c) => c.type === "expense")
+                .filter((c) => c.type === "expense")
                 .map((cat) => (
                   <option key={cat.id} value={cat.id}>
                     {cat.name}

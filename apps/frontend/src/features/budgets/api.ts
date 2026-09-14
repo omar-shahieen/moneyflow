@@ -3,6 +3,7 @@ import { apiClient } from "@/api/client";
 import { queryKeys } from "@/api/queryKeys";
 import { normalizeError } from "@/api/client";
 import type { NormalizedError } from "@/api/errors";
+import type { PaginatedResponse } from "@/api/helpers";
 
 export type Budget = {
   id: string;
@@ -16,6 +17,11 @@ export type Budget = {
   is_exceeded?: boolean;
 };
 
+export type BudgetFilters = {
+  page?: number;
+  page_size?: number;
+};
+
 export type CreateBudgetInput = {
   category_id: string;
   monthly_limit_minor: number;
@@ -27,12 +33,16 @@ export type UpdateBudgetInput = {
   currency?: string;
 };
 
-export function useBudgets() {
+export function useBudgets(filters?: BudgetFilters) {
   return useQuery({
-    queryKey: queryKeys.budgets.lists(),
+    queryKey: queryKeys.budgets.list(filters),
     queryFn: async () => {
-      const response = await apiClient.get("/budgets");
-      return response.data as Budget[];
+      const params = new URLSearchParams();
+      if (filters?.page) params.set("page", String(filters.page));
+      if (filters?.page_size) params.set("page_size", String(filters.page_size));
+
+      const response = await apiClient.get(`/budgets?${params.toString()}`);
+      return response.data as PaginatedResponse<Budget>;
     },
   });
 }

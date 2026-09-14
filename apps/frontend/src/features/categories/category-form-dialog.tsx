@@ -34,11 +34,12 @@ export function CategoryFormDialog({
   onOpenChange,
   categoryId,
 }: CategoryFormDialogProps) {
-  const { data: categories } = useCategories();
+  const { data: categoriesData } = useCategories({ page_size: 100 });
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
   const isEditing = !!categoryId;
-  const category = categories?.find((c) => c.id === categoryId);
+  const categories = categoriesData?.data ?? [];
+  const category = categories.find((c) => c.id === categoryId);
 
   const {
     register,

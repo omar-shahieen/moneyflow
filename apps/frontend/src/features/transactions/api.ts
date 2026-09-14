@@ -3,6 +3,7 @@ import { apiClient } from "@/api/client";
 import { queryKeys } from "@/api/queryKeys";
 import { normalizeError } from "@/api/client";
 import type { NormalizedError } from "@/api/errors";
+import type { PaginatedResponse } from "@/api/helpers";
 
 export type Transaction = {
   id: string;
@@ -19,11 +20,13 @@ export type Transaction = {
 
 export type TransactionFilters = {
   page?: number;
-  limit?: number;
+  page_size?: number;
   from?: string;
   to?: string;
   category_id?: string;
   type?: "income" | "expense";
+  sort?: string;
+  order?: "asc" | "desc";
 };
 
 export type CreateTransactionInput = {
@@ -56,14 +59,16 @@ export function useTransactions(filters?: TransactionFilters) {
     queryFn: async () => {
       const params = new URLSearchParams();
       if (filters?.page) params.set("page", String(filters.page));
-      if (filters?.limit) params.set("limit", String(filters.limit));
-      if (filters?.from) params.set("from", filters.from);
-      if (filters?.to) params.set("to", filters.to);
+      if (filters?.page_size) params.set("page_size", String(filters.page_size));
+      if (filters?.from) params.set("start_date", filters.from);
+      if (filters?.to) params.set("end_date", filters.to);
       if (filters?.category_id) params.set("category_id", filters.category_id);
       if (filters?.type) params.set("type", filters.type);
+      if (filters?.sort) params.set("sort", filters.sort);
+      if (filters?.order) params.set("order", filters.order);
 
       const response = await apiClient.get(`/transactions?${params.toString()}`);
-      return response.data as { data: Transaction[]; total: number; page: number; limit: number };
+      return response.data as PaginatedResponse<Transaction>;
     },
   });
 }

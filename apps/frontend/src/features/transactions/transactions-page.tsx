@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { Plus, Pencil, Trash2, ArrowLeftRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -12,22 +10,41 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
+import { DateRangeFilter } from "@/components/ui/date-range-filter";
+import { SelectFilter } from "@/components/ui/select-filter";
+import { SortSelect } from "@/components/ui/sort-select";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
 import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { useTransactions, useDeleteTransaction } from "./api";
+import { useCategories } from "@/features/categories/api";
 import { TransactionFormDialog } from "./transaction-form-dialog";
 import { formatMoney } from "@/lib/money";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { toast } from "sonner";
 import type { TransactionFilters } from "./api";
 
+const SORT_OPTIONS = [
+  { value: "occurred_at", label: "Date" },
+  { value: "amount_minor", label: "Amount" },
+  { value: "created_at", label: "Created" },
+];
+
+const DEFAULT_FILTERS: TransactionFilters = {
+  page: 1,
+  page_size: 20,
+};
+
 export function TransactionsPage() {
-  const [filters, setFilters] = useState<TransactionFilters>({
-    page: 1,
-    limit: 20,
-  });
+  const { filters, setFilter, setPage, setPageSize, resetFilters } =
+    useUrlFilters<TransactionFilters>({
+      defaults: DEFAULT_FILTERS,
+    });
+
   const { data, isLoading, error, refetch } = useTransactions(filters);
+  const { data: categoriesData } = useCategories({ page_size: 100 });
   const deleteTransaction = useDeleteTransaction();
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -43,6 +60,12 @@ export function TransactionsPage() {
 
   const transactions = data?.data ?? [];
   const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+  const page = data?.page ?? filters.page ?? 1;
+  const limit = data?.limit ?? filters.page_size ?? 20;
+
+  const categories = categoriesData?.data ?? [];
+  const categoryOptions = categories.map((c) => ({ value: c.id, label: c.name }));
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -70,47 +93,39 @@ export function TransactionsPage() {
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-4">
-        <div className="flex-1 min-w-[200px]">
-          <Label htmlFor="from">From</Label>
-          <Input
-            id="from"
-            type="date"
-            value={filters.from ?? ""}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, from: e.target.value || undefined }))
-            }
-          />
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <Label htmlFor="to">To</Label>
-          <Input
-            id="to"
-            type="date"
-            value={filters.to ?? ""}
-            onChange={(e) =>
-              setFilters((prev) => ({ ...prev, to: e.target.value || undefined }))
-            }
-          />
-        </div>
-        <div className="flex-1 min-w-[200px]">
-          <Label htmlFor="type">Type</Label>
-          <select
-            id="type"
-            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
-            value={filters.type ?? ""}
-            onChange={(e) =>
-              setFilters((prev) => ({
-                ...prev,
-                type: (e.target.value as "income" | "expense") || undefined,
-              }))
-            }
-          >
-            <option value="">All</option>
-            <option value="income">Income</option>
-            <option value="expense">Expense</option>
-          </select>
-        </div>
+      <div className="flex flex-wrap items-end gap-4">
+        <DateRangeFilter
+          from={filters.from}
+          to={filters.to}
+          onChange={(range) =>
+            setFilter("from" as any, range.from) ||
+            setFilter("to" as any, range.to)
+          }
+        />
+        <SelectFilter
+          label="Type"
+          options={[
+            { value: "income", label: "Income" },
+            { value: "expense", label: "Expense" },
+          ]}
+          value={filters.type}
+          onChange={(v) => setFilter("type" as any, v)}
+        />
+        <SelectFilter
+          label="Category"
+          options={categoryOptions}
+          value={filters.category_id}
+          onChange={(v) => setFilter("category_id" as any, v)}
+        />
+        <SortSelect
+          options={SORT_OPTIONS}
+          value={filters.sort}
+          order={filters.order}
+          onChange={(sort, order) => {
+            setFilter("sort" as any, sort);
+            setFilter("order" as any, order);
+          }}
+        />
       </div>
 
       {transactions.length === 0 ? (
@@ -186,33 +201,14 @@ export function TransactionsPage() {
             </Table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing {transactions.length} of {total} transactions
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={filters.page === 1}
-                onClick={() =>
-                  setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) - 1 }))
-                }
-              >
-                Previous
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={transactions.length < (filters.limit ?? 20)}
-                onClick={() =>
-                  setFilters((prev) => ({ ...prev, page: (prev.page ?? 1) + 1 }))
-                }
-              >
-                Next
-              </Button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+            onLimitChange={(size) => setPageSize(size)}
+          />
         </>
       )}
 

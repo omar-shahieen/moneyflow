@@ -10,16 +10,37 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
+import { SelectFilter } from "@/components/ui/select-filter";
+import { SortSelect } from "@/components/ui/sort-select";
 import { EmptyState } from "@/components/feedback/empty-state";
 import { LoadingPage } from "@/components/feedback/loading";
 import { ErrorAlert } from "@/components/feedback/error-alert";
 import { ConfirmDialog } from "@/components/feedback/confirm-dialog";
 import { useCategories, useDeleteCategory } from "./api";
 import { CategoryFormDialog } from "./category-form-dialog";
+import { useUrlFilters } from "@/hooks/use-url-filters";
 import { toast } from "sonner";
+import type { CategoryFilters } from "./api";
+
+const SORT_OPTIONS = [
+  { value: "name", label: "Name" },
+  { value: "type", label: "Type" },
+  { value: "created_at", label: "Created" },
+];
+
+const DEFAULT_FILTERS: CategoryFilters = {
+  page: 1,
+  page_size: 20,
+};
 
 export function CategoriesPage() {
-  const { data: categories, isLoading, error, refetch } = useCategories();
+  const { filters, setFilter, setPage, setPageSize } =
+    useUrlFilters<CategoryFilters>({
+      defaults: DEFAULT_FILTERS,
+    });
+
+  const { data, isLoading, error, refetch } = useCategories(filters);
   const deleteCategory = useDeleteCategory();
   const [createOpen, setCreateOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -32,6 +53,12 @@ export function CategoriesPage() {
   if (error) {
     return <ErrorAlert error={error} onRetry={() => refetch()} />;
   }
+
+  const categories = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = data?.totalPages ?? 1;
+  const page = data?.page ?? filters.page ?? 1;
+  const limit = data?.limit ?? filters.page_size ?? 20;
 
   const handleDelete = async () => {
     if (!deleteId) return;
@@ -59,7 +86,28 @@ export function CategoriesPage() {
         </Button>
       </div>
 
-      {!categories || categories.length === 0 ? (
+      <div className="flex flex-wrap items-end gap-4">
+        <SelectFilter
+          label="Type"
+          options={[
+            { value: "income", label: "Income" },
+            { value: "expense", label: "Expense" },
+          ]}
+          value={filters.type}
+          onChange={(v) => setFilter("type" as any, v)}
+        />
+        <SortSelect
+          options={SORT_OPTIONS}
+          value={filters.sort}
+          order={filters.order}
+          onChange={(sort, order) => {
+            setFilter("sort" as any, sort);
+            setFilter("order" as any, order);
+          }}
+        />
+      </div>
+
+      {categories.length === 0 ? (
         <EmptyState
           icon={<Tag className="h-8 w-8 text-muted-foreground" />}
           title="No categories"
@@ -72,51 +120,64 @@ export function CategoriesPage() {
           }
         />
       ) : (
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead className="w-[100px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {categories.map((category) => (
-                <TableRow key={category.id}>
-                  <TableCell className="font-medium">{category.name}</TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        category.type === "income" ? "success" : "secondary"
-                      }
-                    >
-                      {category.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setEditId(category.id)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setDeleteId(category.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
+        <>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {categories.map((category) => (
+                  <TableRow key={category.id}>
+                    <TableCell className="font-medium">
+                      {category.name}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={
+                          category.type === "income" ? "success" : "secondary"
+                        }
+                      >
+                        {category.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setEditId(category.id)}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setDeleteId(category.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            limit={limit}
+            onPageChange={setPage}
+            onLimitChange={(size) => setPageSize(size)}
+          />
+        </>
       )}
 
       <CategoryFormDialog
