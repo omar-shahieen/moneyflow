@@ -75,7 +75,7 @@ services:
   # ── React / Vite frontend ──────────────────────────────────
   frontend:
     build:
-      context: ./apps/backend
+      context: ./apps/frontend
       dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
