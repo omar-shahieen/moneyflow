@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: moneyflow
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - worker-deployment.yaml
+  - frontend-deployment.yaml
+  - migrate-job.yaml
+  - ingress.yaml
+  - network-policy.yaml
+  - pdb.yaml
+
+# Common labels applied to every resource
+commonLabels:
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/part-of: moneyflow
+
+# Image names patched by overlays and the release pipeline
+images:
+  - name: moneyflow-api
+    newName: ghcr.io/omar-shahieen/moneyflow/api
+    newTag: latest
+  - name: moneyflow-worker
+    newName: ghcr.io/omar-shahieen/moneyflow/api
+    newTag: latest
+  - name: moneyflow-frontend
+    newName: ghcr.io/omar-shahieen/moneyflow/frontend
+    newTag: latest

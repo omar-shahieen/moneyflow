@@ -1,0 +1,98 @@
+# Network policies: default-deny-all, then explicit allow rules
+# ─────────────────────────────────────────────────────────────
+
+# 1. Default deny all ingress and egress for the namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: moneyflow
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+
+---
+# 2. Allow ingress → API (from ingress controller and worker)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: moneyflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # nginx ingress controller pods (adjust namespace/labels for your cluster)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: 8080
+          protocol: TCP
+
+---
+# 3. Allow API and worker egress to Postgres and Redis
+#    (Managed services: their IPs are not in-cluster, so we use CIDR ranges or
+#     open egress on the relevant port. Adjust to your managed service endpoints.)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-egress-db
+  namespace: moneyflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: moneyflow
+  policyTypes:
+    - Egress
+  egress:
+    # Postgres (5432) and Redis (6379) — restrict to managed service CIDR in overlays
+    - ports:
+        - port: 5432
+          protocol: TCP
+        - port: 6379
+          protocol: TCP
+    # DNS resolution (required for service discovery)
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    # Outbound HTTPS for external APIs: Clerk, Resend, New Relic, R2, billing
+    - ports:
+        - port: 443
+          protocol: TCP
+
+---
+# 4. Allow frontend pods to receive ingress traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-frontend
+  namespace: moneyflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - port: 80
+          protocol: TCP

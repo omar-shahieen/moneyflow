@@ -1,0 +1,41 @@
+# ============================================================
+# MoneyFlow — Docker Compose (CI / integration tests)
+# Spins up isolated Postgres + Redis for the test suite.
+# Usage (in CI):
+#   docker compose -f docker-compose.test.yml up -d
+#   go test -race ./...            # run from apps/backend/
+#   docker compose -f docker-compose.test.yml down -v
+# ============================================================
+
+services:
+
+  postgres_test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: moneyflow_test
+      POSTGRES_PASSWORD: moneyflow_test
+      POSTGRES_DB: moneyflow_test
+    ports:
+      - "127.0.0.1:5433:5432"    # offset port to avoid collision with dev Compose
+    # Ephemeral — no named volume; container removal drops all data
+    tmpfs:
+      - /var/lib/postgresql/data  # RAM-backed for faster test runs
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moneyflow_test -d moneyflow_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  redis_test:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6380:6379"    # offset port
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 3s

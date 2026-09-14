@@ -1,0 +1,35 @@
+# PodDisruptionBudgets — guarantee minimum availability during voluntary disruptions
+# (node drain, rolling updates, cluster upgrades)
+
+# API: always keep at least 1 pod running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: moneyflow-api-pdb
+  namespace: moneyflow
+  labels:
+    app.kubernetes.io/name: moneyflow
+    app.kubernetes.io/component: api
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: moneyflow
+      app.kubernetes.io/component: api
+
+---
+# Frontend: always keep at least 1 pod running
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: moneyflow-frontend-pdb
+  namespace: moneyflow
+  labels:
+    app.kubernetes.io/name: moneyflow
+    app.kubernetes.io/component: frontend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: moneyflow
+      app.kubernetes.io/component: frontend

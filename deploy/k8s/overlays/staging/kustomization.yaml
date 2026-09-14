@@ -1,0 +1,93 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: moneyflow-staging
+
+resources:
+  - ../../base
+
+# ── Namespace override ────────────────────────────────────────
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: moneyflow
+      $patch: replace
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: moneyflow-staging
+
+  # ── Replica counts (lower for staging) ───────────────────────
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-api
+        namespace: moneyflow-staging
+      spec:
+        replicas: 1
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: moneyflow-frontend
+        namespace: moneyflow-staging
+      spec:
+        replicas: 1
+
+  # ── ConfigMap overrides for staging ──────────────────────────
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: moneyflow-config
+        namespace: moneyflow-staging
+      data:
+        MONEYFLOW_PRIMARY.ENV: "staging"
+        MONEYFLOW_OBSERVABILITY.ENVIRONMENT: "staging"
+        MONEYFLOW_SERVER.CORS_ALLOWED_ORIGINS: "https://staging.moneyflow.example.com"
+
+  # ── Ingress host override ─────────────────────────────────────
+  - patch: |-
+      apiVersion: networking.k8s.io/v1
+      kind: Ingress
+      metadata:
+        name: moneyflow
+        namespace: moneyflow-staging
+        annotations:
+          cert-manager.io/cluster-issuer: "letsencrypt-staging"
+      spec:
+        tls:
+          - hosts:
+              - staging.moneyflow.example.com
+            secretName: moneyflow-staging-tls
+        rules:
+          - host: staging.moneyflow.example.com
+            http:
+              paths:
+                - path: /api
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: moneyflow-api
+                      port:
+                        name: http
+                - path: /health
+                  pathType: Exact
+                  backend:
+                    service:
+                      name: moneyflow-api
+                      port:
+                        name: http
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: moneyflow-frontend
+                      port:
+                        name: http
+
+# Image tags are set by the release pipeline via:
+#   kustomize edit set image moneyflow-api=<registry>/<image>@sha256:<digest>

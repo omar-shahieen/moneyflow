@@ -1,0 +1,208 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_digest:
+        description: "Backend image digest (from staging release — e.g. sha256:abc123)"
+        required: true
+        type: string
+      frontend_digest:
+        description: "Frontend image digest (from staging release)"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "deploy" to confirm production deployment'
+        required: true
+        type: string
+
+# Only one production deployment at a time, never cancel in progress
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BACKEND:  ghcr.io/${{ github.repository }}/api
+  IMAGE_FRONTEND: ghcr.io/${{ github.repository }}/frontend
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  # Guard: validate inputs and verify image signatures
+  # before touching production
+  # ──────────────────────────────────────────────────────────
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject if confirmation is wrong
+        if: inputs.confirm != 'deploy'
+        run: |
+          echo "Confirmation string must be exactly 'deploy'. Got: '${{ inputs.confirm }}'"
+          exit 1
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify backend image signature
+        run: |
+          cosign verify \
+            ${{ env.IMAGE_BACKEND }}@${{ inputs.backend_digest }} \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/release.yml" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+      - name: Verify frontend image signature
+        run: |
+          cosign verify \
+            ${{ env.IMAGE_FRONTEND }}@${{ inputs.frontend_digest }} \
+            --certificate-identity-regexp="https://github.com/${{ github.repository }}/.github/workflows/release.yml" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com"
+
+  # ──────────────────────────────────────────────────────────
+  # Production deployment — requires maintainer approval
+  # (configured via GitHub environment "production")
+  # ──────────────────────────────────────────────────────────
+  deploy-production:
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: production   # requires approval + has production secrets
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      BACKEND_IMAGE:  ${{ env.IMAGE_BACKEND }}@${{ inputs.backend_digest }}
+      FRONTEND_IMAGE: ${{ env.IMAGE_FRONTEND }}@${{ inputs.frontend_digest }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" \
+            | bash -s -- /usr/local/bin
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      # Replace with cloud provider OIDC auth:
+      # GKE: google-github-actions/auth + google-github-actions/get-gke-credentials
+      # EKS: aws-actions/configure-aws-credentials + aws eks update-kubeconfig
+      - name: Configure kubeconfig (production)
+        run: echo "${{ secrets.KUBE_CONFIG_PRODUCTION }}" | base64 -d > $HOME/.kube/config
+
+      - name: Confirm database backup is recent
+        run: |
+          # Extend this to query your backup provider's API and assert
+          # a backup was completed within the last 24 hours before migrating.
+          echo "⚠️  Verify a recent DB backup exists before proceeding!"
+          echo "Backup check is a stub — wire to your backup provider's API."
+
+      - name: Run database migration (production)
+        run: |
+          kubectl create job migrate-${{ github.sha }} \
+            --from=cronjob/moneyflow-migrate \
+            --namespace=moneyflow-production \
+            --dry-run=client -o yaml \
+          | kubectl set image -f - \
+            migrate="${{ env.BACKEND_IMAGE }}" \
+          | kubectl apply -f -
+
+          kubectl wait --for=condition=complete \
+            job/migrate-${{ github.sha }} \
+            --namespace=moneyflow-production \
+            --timeout=300s
+
+      - name: Set image tags in production overlay
+        run: |
+          cd deploy/k8s/overlays/production
+          kustomize edit set image \
+            moneyflow-api="${{ env.BACKEND_IMAGE }}" \
+            moneyflow-worker="${{ env.BACKEND_IMAGE }}" \
+            moneyflow-frontend="${{ env.FRONTEND_IMAGE }}"
+
+      - name: Save previous image digests for rollback
+        id: prev-images
+        run: |
+          PREV_API=$(kubectl get deployment moneyflow-api \
+            --namespace=moneyflow-production \
+            -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || echo "none")
+          echo "prev_api=$PREV_API" >> $GITHUB_OUTPUT
+
+      - name: Apply production manifests
+        run: |
+          kustomize build deploy/k8s/overlays/production \
+            | kubectl apply -f -
+
+      - name: Wait for API rollout
+        id: rollout-api
+        run: |
+          kubectl rollout status deployment/moneyflow-api \
+            --namespace=moneyflow-production \
+            --timeout=300s
+
+      - name: Wait for worker rollout
+        id: rollout-worker
+        run: |
+          kubectl rollout status deployment/moneyflow-worker \
+            --namespace=moneyflow-production \
+            --timeout=180s
+
+      - name: Wait for frontend rollout
+        id: rollout-frontend
+        run: |
+          kubectl rollout status deployment/moneyflow-frontend \
+            --namespace=moneyflow-production \
+            --timeout=180s
+
+      - name: Production smoke tests
+        run: |
+          PROD_URL="${{ secrets.PRODUCTION_API_URL }}"
+          # Health endpoint
+          for i in $(seq 1 15); do
+            STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${PROD_URL}/health")
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed (HTTP $STATUS)"
+              break
+            fi
+            if [ "$i" = "15" ]; then
+              echo "Production health check failed — initiating rollback"
+              exit 1
+            fi
+            echo "Attempt $i: HTTP $STATUS — retrying..."
+            sleep 10
+          done
+
+          # Auth failure check — unauthenticated request must return 401
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" "${PROD_URL}/api/v1/transactions")
+          if [ "$STATUS" != "401" ]; then
+            echo "Auth smoke test failed: expected 401, got $STATUS"
+            exit 1
+          fi
+          echo "Auth check passed (HTTP 401 as expected)"
+
+      - name: Rollback on failure
+        if: failure() && steps.rollout-api.conclusion != 'skipped'
+        run: |
+          PREV="${{ steps.prev-images.outputs.prev_api }}"
+          if [ "$PREV" != "none" ] && [ -n "$PREV" ]; then
+            echo "Rolling back API to: $PREV"
+            kubectl set image deployment/moneyflow-api \
+              api="$PREV" \
+              --namespace=moneyflow-production
+            kubectl rollout status deployment/moneyflow-api \
+              --namespace=moneyflow-production \
+              --timeout=180s
+          else
+            echo "No previous image found — manual intervention required"
+          fi
+
+      - name: Publish production deployment summary
+        if: always()
+        run: |
+          echo "## Production Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| | |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Backend digest** | \`${{ inputs.backend_digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Frontend digest** | \`${{ inputs.frontend_digest }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Deployed by** | @${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Result** | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
