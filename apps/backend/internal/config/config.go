@@ -18,7 +18,26 @@ type Config struct {
 	Auth          AuthConfig           `koanf:"auth" validate:"required"`
 	Redis         RedisConfig          `koanf:"redis" validate:"required"`
 	Integration   IntegrationConfig    `koanf:"integration" validate:"required"`
+	Billing       BillingConfig        `koanf:"billing" validate:"required"`
 	Observability *ObservabilityConfig `koanf:"observability"`
+	Storage       StorageConfig        `koanf:"storage"`
+}
+
+type BillingConfig struct {
+	Provider         string             `koanf:"provider" validate:"required"`
+	MerchantCode     string             `koanf:"merchant_code" validate:"required"`
+	SecureKey        string             `koanf:"secure_key" validate:"required"`
+	BaseURL          string             `koanf:"base_url" validate:"required"`
+	WebhookSecret    string             `koanf:"webhook_secret" validate:"required"`
+	SuccessReturnURL string             `koanf:"success_return_url" validate:"required"`
+	CancelReturnURL  string             `koanf:"cancel_return_url" validate:"required"`
+	WebhookURL       string             `koanf:"webhook_url" validate:"required"`
+	PlanPrices       map[string]float64 `koanf:"plan_prices" validate:"required"`
+
+	ChargeExpiryMinutes    int `koanf:"charge_expiry_minutes" validate:"required"`
+	DunningGraceDays       int `koanf:"dunning_grace_days" validate:"required"`
+	DunningMaxRetries      int `koanf:"dunning_max_retries" validate:"required"`
+	DunningRetryIntervalHr int `koanf:"dunning_retry_interval_hours" validate:"required"`
 }
 
 type Primary struct {
@@ -55,6 +74,26 @@ type IntegrationConfig struct {
 
 type AuthConfig struct {
 	SecretKey string `koanf:"secret_key" validate:"required"`
+}
+
+type StorageConfig struct {
+	Provider string             `koanf:"provider"` // "r2" or "local"
+	Local    LocalStorageConfig `koanf:"local"`
+	R2       R2Config           `koanf:"r2"`
+}
+
+type R2Config struct {
+	AccountID      string `koanf:"account_id"`
+	AccessKeyID    string `koanf:"access_key_id"`
+	SecretAccessKey string `koanf:"secret_access_key"`
+	BucketName     string `koanf:"bucket_name"`
+	PublicURL      string `koanf:"public_url"`
+	PresignExpiry  int    `koanf:"presign_expiry"` // minutes, default 15
+	KeyPrefix      string `koanf:"key_prefix"`     // e.g. "payments"
+}
+
+type LocalStorageConfig struct {
+	BasePath string `koanf:"base_path"`
 }
 
 func LoadConfig() (*Config, error) {

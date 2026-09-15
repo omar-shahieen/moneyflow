@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS recurring_rules (
     user_id TEXT NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     amount_minor BIGINT NOT NULL,
-    currency CHAR(3) NOT NULL DEFAULT 'USD',
+    currency CHAR(3) NOT NULL DEFAULT 'EGP',
     frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'monthly')),
     next_run_date DATE NOT NULL,
     last_generated_date DATE,

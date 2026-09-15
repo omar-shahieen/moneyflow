@@ -1,6 +1,8 @@
 package report
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/omar-shahieen/moneyflow/internal/model"
@@ -22,6 +24,12 @@ type ListReportsRequest struct {
 	Format string `form:"format" filter:"format,eq" binding:"omitempty,oneof=pdf csv"`
 }
 
+func (r *ListReportsRequest) Normalize() {
+	r.PaginationRequest.Normalize()
+	r.Status = strings.ToLower(strings.TrimSpace(r.Status))
+	r.Format = strings.ToLower(strings.TrimSpace(r.Format))
+}
+
 type CreateReportRequest struct {
 	Format      string `json:"format" binding:"required,oneof=pdf csv"`
 	PeriodStart string `json:"period_start" binding:"required"`
@@ -30,4 +38,10 @@ type CreateReportRequest struct {
 
 func (r CreateReportRequest) Validate() error {
 	return validate.Struct(r)
+}
+
+func (r *CreateReportRequest) Normalize() {
+	r.Format = strings.ToLower(strings.TrimSpace(r.Format))
+	r.PeriodStart = strings.TrimSpace(r.PeriodStart)
+	r.PeriodEnd = strings.TrimSpace(r.PeriodEnd)
 }

@@ -53,8 +53,8 @@ export function SettingsPage() {
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       display_name: "",
-      default_currency: "USD",
-      timezone: "UTC",
+      default_currency: "EGP",
+      timezone: "Africa/Cairo",
     },
   });
 

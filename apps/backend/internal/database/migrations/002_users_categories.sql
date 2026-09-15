@@ -3,8 +3,8 @@ CREATE TABLE IF NOT EXISTS user_accounts (
     email TEXT UNIQUE NOT NULL,
     display_name TEXT NOT NULL DEFAULT '',
     avatar_url TEXT,
-    default_currency CHAR(3) NOT NULL DEFAULT 'USD',
-    timezone TEXT NOT NULL DEFAULT 'UTC',
+    default_currency CHAR(3) NOT NULL DEFAULT 'EGP',
+    timezone TEXT NOT NULL DEFAULT 'Africa/Cairo',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

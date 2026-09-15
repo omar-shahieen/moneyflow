@@ -10,7 +10,6 @@ type Budget struct {
 	ID                uuid.UUID `json:"id" db:"id"`
 	CategoryID        uuid.UUID `json:"category_id" db:"category_id"`
 	MonthlyLimitMinor int64     `json:"monthly_limit_minor" db:"monthly_limit_minor"`
-	Currency          string    `json:"currency" db:"currency"`
 	CreatedAt         time.Time `json:"created_at" db:"created_at"`
 }
 

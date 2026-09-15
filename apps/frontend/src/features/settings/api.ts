@@ -93,6 +93,7 @@ export function useExportAccount() {
 }
 
 export const TIMEZONES = [
+  "Africa/Cairo",
   "UTC",
   "America/New_York",
   "America/Chicago",
@@ -107,6 +108,7 @@ export const TIMEZONES = [
 ];
 
 export const CURRENCIES = [
+  { code: "EGP", name: "Egyptian Pound" },
   { code: "USD", name: "US Dollar" },
   { code: "EUR", name: "Euro" },
   { code: "GBP", name: "British Pound" },

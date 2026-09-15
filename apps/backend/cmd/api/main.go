@@ -38,10 +38,18 @@ func main() {
 
 	// Initialize repositories, services, and handlers
 	repos := repository.NewRepositories(srv)
-	services, serviceErr := service.NewServices(srv, repos)
+	services, serviceErr := service.NewServices(srv, repos, &log)
 	if serviceErr != nil {
 		log.Fatal().Err(serviceErr).Msg("could not create services")
 	}
+
+	// Initialize job handlers after services are created
+	srv.Job.InitHandlers(cfg, &log)
+	srv.Job.SetImportService(services.ImportService)
+	if err := srv.Job.Start(); err != nil {
+		log.Fatal().Err(err).Msg("failed to start background job server")
+	}
+
 	handlers := handler.NewHandlers(srv, services)
 
 	// Initialize router

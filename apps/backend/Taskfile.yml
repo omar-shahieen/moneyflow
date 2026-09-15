@@ -1,7 +1,7 @@
 version: '3'
 
 vars:
-  MONEYFLOW_DB_DSN: '{{.MONEYFLOW_DB_DSN | default ""}}'
+  MONEYFLOW_DB_DSN: '{{.MONEYFLOW_DB_DSN | default "postgres://postgres:postgres@localhost:5432/moneyflow?sslmode=disable"}}'
 
 tasks:
   help:
@@ -10,18 +10,10 @@ tasks:
     - task --list-all
     silent: true
 
-  confirm:
-    desc: confirmation prompt
-    cmds:
-    - |
-      echo -n 'Are you sure? [y/N] ' && read ans && [ ${ans:-N} = y ]
-    silent: true
-    internal: true
-
   run:
-    desc: run the cmd/moneyflow application
+    desc: run the cmd/api application
     cmds:
-    - go run ./cmd/moneyflow
+    - go run ./cmd/api
 
   migrations:new:
     desc: create a new database migration
@@ -36,14 +28,20 @@ tasks:
       fi
     - echo 'Creating migration file for {{.NAME}}...'
     - tern new -m ./internal/database/migrations {{.NAME}}
+  confirm:
+    desc: confirmation prompt
+    interactive: true
+    cmds:
+    - |
+      echo -n 'Are you sure? [y/N] ' && read ans && [ ${ans:-N} = y ]
+    internal: true
 
   migrations:up:
     desc: apply all up database migrations
-    deps: [ confirm ]
     cmds:
+    - task: confirm
     - echo 'Running up migrations...'
     - tern migrate -m ./internal/database/migrations --conn-string {{.MONEYFLOW_DB_DSN}}
-
   tidy:
     desc: format all .go files, and tidy and vendor module dependencies
     cmds:

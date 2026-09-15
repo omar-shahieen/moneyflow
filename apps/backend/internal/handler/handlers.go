@@ -12,10 +12,12 @@ type Handlers struct {
 	Transaction  *TransactionHandler
 	Budget       *BudgetHandler
 	Subscription *SubscriptionHandler
+	Billing      *BillingHandler
 	Recurring    *RecurringRuleHandler
 	Receipt      *ReceiptHandler
 	Import       *ImportHandler
 	Report       *ReportHandler
+	User         *UserHandler
 }
 
 func NewHandlers(s *server.Server, svc *service.Services) *Handlers {
@@ -25,10 +27,12 @@ func NewHandlers(s *server.Server, svc *service.Services) *Handlers {
 		Category:     NewCategoryHandler(s, svc.CategoryService),
 		Transaction:  NewTransactionHandler(s, svc.TransactionService),
 		Budget:       NewBudgetHandler(s, svc.BudgetService),
-		Subscription: NewSubscriptionHandler(s),
+		Subscription: NewSubscriptionHandler(s, svc.SubscriptionService),
+		Billing:      NewBillingHandler(s, svc.BillingService),
 		Recurring:    NewRecurringRuleHandler(s, svc.RecurringRuleService),
 		Receipt:      NewReceiptHandler(s, svc.Storage),
-		Import:       NewImportHandler(s, svc.ImportService),
+		Import:       NewImportHandler(s, svc.ImportService, svc.Storage),
 		Report:       NewReportHandler(s, svc.ReportService),
+		User:         NewUserHandler(s, svc.UserService),
 	}
 }

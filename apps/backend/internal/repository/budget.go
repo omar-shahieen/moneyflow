@@ -24,7 +24,7 @@ func NewBudgetRepository(server *server.Server) *BudgetRepo {
 func (r *BudgetRepo) GetByID(ctx context.Context, id uuid.UUID) (*budget.Budget, error) {
 	stmt := `
 		SELECT
-			id, category_id, monthly_limit_minor, currency, created_at
+			id, category_id, monthly_limit_minor, created_at
 		FROM
 			budgets
 		WHERE
@@ -52,7 +52,7 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, req *budget.
 
 	stmt := `
 		SELECT
-			b.id, b.category_id, b.monthly_limit_minor, b.currency, b.created_at
+			b.id, b.category_id, b.monthly_limit_minor, b.created_at
 		FROM
 			budgets b
 		JOIN
@@ -60,7 +60,7 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, req *budget.
 		WHERE
 			bm.user_id = @user_id` + where
 
-	sortColumn := "b." + EnsureSortColumn(req.Sort, map[string]bool{"created_at": true, "monthly_limit_minor": true, "currency": true}, "created_at")
+	sortColumn := "b." + EnsureSortColumn(req.Sort, map[string]bool{"created_at": true, "monthly_limit_minor": true}, "created_at")
 	sortOrder := EnsureSortOrder(req.Order)
 	stmt += fmt.Sprintf(" ORDER BY %s %s", sortColumn, sortOrder)
 
@@ -125,9 +125,9 @@ func (r *BudgetRepo) ListByUser(ctx context.Context, userID string, req *budget.
 func (r *BudgetRepo) Create(ctx context.Context, b *budget.Budget) error {
 	stmt := `
 		INSERT INTO
-			budgets (id, category_id, monthly_limit_minor, currency)
+			budgets (id, category_id, monthly_limit_minor)
 		VALUES
-			(@id, @category_id, @monthly_limit_minor, @currency)
+			(@id, @category_id, @monthly_limit_minor)
 		RETURNING
 			created_at
 	`
@@ -136,7 +136,6 @@ func (r *BudgetRepo) Create(ctx context.Context, b *budget.Budget) error {
 		"id":                  b.ID,
 		"category_id":         b.CategoryID,
 		"monthly_limit_minor": b.MonthlyLimitMinor,
-		"currency":            b.Currency,
 	}).Scan(&b.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to execute create budget query for category_id=%s: %w", b.CategoryID.String(), err)
@@ -148,7 +147,7 @@ func (r *BudgetRepo) Create(ctx context.Context, b *budget.Budget) error {
 func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 	stmt := `
 		UPDATE budgets
-		SET category_id = @category_id, monthly_limit_minor = @monthly_limit_minor, currency = @currency
+		SET category_id = @category_id, monthly_limit_minor = @monthly_limit_minor
 		WHERE id = @id
 	`
 
@@ -156,7 +155,6 @@ func (r *BudgetRepo) Update(ctx context.Context, b *budget.Budget) error {
 		"id":                  b.ID,
 		"category_id":         b.CategoryID,
 		"monthly_limit_minor": b.MonthlyLimitMinor,
-		"currency":            b.Currency,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute update budget query for budget_id=%s: %w", b.ID.String(), err)

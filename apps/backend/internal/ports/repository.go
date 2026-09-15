@@ -9,6 +9,7 @@ import (
 	"github.com/omar-shahieen/moneyflow/internal/model/budget"
 	"github.com/omar-shahieen/moneyflow/internal/model/category"
 	"github.com/omar-shahieen/moneyflow/internal/model/imports"
+	"github.com/omar-shahieen/moneyflow/internal/model/notification"
 	"github.com/omar-shahieen/moneyflow/internal/model/recurring"
 	"github.com/omar-shahieen/moneyflow/internal/model/report"
 	"github.com/omar-shahieen/moneyflow/internal/model/subscription"
@@ -90,4 +91,14 @@ type SubscriptionRepository interface {
 	GetByUserID(ctx context.Context, userID string) (*subscription.Subscription, error)
 	Create(ctx context.Context, s *subscription.Subscription) error
 	Update(ctx context.Context, s *subscription.Subscription) error
+}
+
+type NotificationRepository interface {
+	GetByID(ctx context.Context, id uuid.UUID, userID string) (*notification.Notification, error)
+	List(ctx context.Context, userID string, limit, offset int, unread *bool) ([]notification.Notification, int, error)
+	Create(ctx context.Context, n *notification.Notification) error
+	MarkAsRead(ctx context.Context, id uuid.UUID, userID string) error
+	MarkAllAsRead(ctx context.Context, userID string) error
+	Delete(ctx context.Context, id uuid.UUID, userID string) error
+	UnreadCount(ctx context.Context, userID string) (int, error)
 }

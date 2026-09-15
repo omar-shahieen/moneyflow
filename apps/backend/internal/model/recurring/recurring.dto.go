@@ -1,6 +1,8 @@
 package recurring
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -23,6 +25,12 @@ type ListRecurringRulesRequest struct {
 	Search    string `form:"search" binding:"omitempty"`
 }
 
+func (r *ListRecurringRulesRequest) Normalize() {
+	r.PaginationRequest.Normalize()
+	r.Frequency = strings.ToLower(strings.TrimSpace(r.Frequency))
+	r.Search = strings.TrimSpace(r.Search)
+}
+
 func (r ListRecurringRulesRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
 	if r.Search == "" {
 		return ""
@@ -34,7 +42,6 @@ func (r ListRecurringRulesRequest) ApplyCustomFilters(args pgx.NamedArgs) string
 type CreateRecurringRuleRequest struct {
 	CategoryID  string `json:"category_id" binding:"required,uuid"`
 	AmountMinor int64  `json:"amount_minor" binding:"required"`
-	Currency    string `json:"currency" binding:"omitempty,len=3"`
 	Frequency   string `json:"frequency" binding:"required,oneof=weekly monthly"`
 	NextRunDate string `json:"next_run_date" binding:"required"`
 	EndDate     string `json:"end_date" binding:"omitempty"`
@@ -44,11 +51,17 @@ func (r CreateRecurringRuleRequest) Validate() error {
 	return validate.Struct(r)
 }
 
+func (r *CreateRecurringRuleRequest) Normalize() {
+	r.CategoryID = strings.TrimSpace(r.CategoryID)
+	r.Frequency = strings.ToLower(strings.TrimSpace(r.Frequency))
+	r.NextRunDate = strings.TrimSpace(r.NextRunDate)
+	r.EndDate = strings.TrimSpace(r.EndDate)
+}
+
 type UpdateRecurringRuleRequest struct {
 	ID          uuid.UUID `uri:"id" binding:"required,uuid"`
 	CategoryID  string    `json:"category_id" binding:"required,uuid"`
 	AmountMinor int64     `json:"amount_minor" binding:"required"`
-	Currency    string    `json:"currency" binding:"omitempty,len=3"`
 	Frequency   string    `json:"frequency" binding:"required,oneof=weekly monthly"`
 	NextRunDate string    `json:"next_run_date" binding:"required"`
 	EndDate     string    `json:"end_date" binding:"omitempty"`
@@ -56,6 +69,13 @@ type UpdateRecurringRuleRequest struct {
 
 func (r UpdateRecurringRuleRequest) Validate() error {
 	return validate.Struct(r)
+}
+
+func (r *UpdateRecurringRuleRequest) Normalize() {
+	r.CategoryID = strings.TrimSpace(r.CategoryID)
+	r.Frequency = strings.ToLower(strings.TrimSpace(r.Frequency))
+	r.NextRunDate = strings.TrimSpace(r.NextRunDate)
+	r.EndDate = strings.TrimSpace(r.EndDate)
 }
 
 type DeleteRecurringRuleRequest struct {

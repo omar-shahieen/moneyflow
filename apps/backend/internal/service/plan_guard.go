@@ -21,7 +21,6 @@ type PlanLimits struct {
 	HasCSVImport     bool
 	HasReceipts      bool
 	HasPDFReports    bool
-	HasMultiCurrency bool
 }
 
 var planLimitsMap = map[subscription.Plan]PlanLimits{
@@ -36,7 +35,6 @@ var planLimitsMap = map[subscription.Plan]PlanLimits{
 		HasCSVImport:     false,
 		HasReceipts:      false,
 		HasPDFReports:    false,
-		HasMultiCurrency: false,
 	},
 	subscription.PlanPro: {
 		MaxCategories:    50,
@@ -49,7 +47,6 @@ var planLimitsMap = map[subscription.Plan]PlanLimits{
 		HasCSVImport:     true,
 		HasReceipts:      true,
 		HasPDFReports:    true,
-		HasMultiCurrency: true,
 	},
 	subscription.PlanVIP: {
 		MaxCategories:    -1,
@@ -62,7 +59,6 @@ var planLimitsMap = map[subscription.Plan]PlanLimits{
 		HasCSVImport:     true,
 		HasReceipts:      true,
 		HasPDFReports:    true,
-		HasMultiCurrency: true,
 	},
 }
 

@@ -110,7 +110,6 @@ func (s *BudgetService) CreateBudget(ctx context.Context, userID string, payload
 		ID:                uuid.New(),
 		CategoryID:        categoryID,
 		MonthlyLimitMinor: payload.MonthlyLimitMinor,
-		Currency:          payload.Currency,
 	}
 
 	if err := s.budgetRepo.Create(ctx, b); err != nil {
@@ -158,7 +157,6 @@ func (s *BudgetService) UpdateBudget(ctx context.Context, userID string, budgetI
 
 	b.CategoryID = payload.CategoryID
 	b.MonthlyLimitMinor = payload.MonthlyLimitMinor
-	b.Currency = payload.Currency
 
 	if err := s.budgetRepo.Update(ctx, b); err != nil {
 		s.server.Logger.Error().Err(err).Msg("failed to update budget")

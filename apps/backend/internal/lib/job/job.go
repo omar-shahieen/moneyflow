@@ -7,9 +7,10 @@ import (
 )
 
 type JobService struct {
-	Client *asynq.Client
-	server *asynq.Server
-	logger *zerolog.Logger
+	Client         *asynq.Client
+	server         *asynq.Server
+	logger         *zerolog.Logger
+	importService  ImportProcessor
 }
 
 func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
@@ -24,9 +25,9 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 		asynq.Config{
 			Concurrency: 10,
 			Queues: map[string]int{
-				"critical": 6, // Higher priority queue for important emails
-				"default":  3, // Default priority for most emails
-				"low":      1, // Lower priority for non-urgent emails
+				"critical": 6,
+				"default":  3,
+				"low":      1,
 			},
 		},
 	)
@@ -39,9 +40,12 @@ func NewJobService(logger *zerolog.Logger, cfg *config.Config) *JobService {
 }
 
 func (j *JobService) Start() error {
-	// Register task handlers
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TaskWelcome, j.handleWelcomeEmailTask)
+
+	if j.importService != nil {
+		mux.HandleFunc(TaskProcessImport, j.handleProcessImport)
+	}
 
 	j.logger.Info().Msg("Starting background job server")
 	if err := j.server.Start(mux); err != nil {

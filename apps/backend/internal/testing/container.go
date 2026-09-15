@@ -95,6 +95,21 @@ func SetupTestDB(t *testing.T) (*TestDB, func()) {
 		Auth: config.AuthConfig{
 			SecretKey: "test-secret",
 		},
+		Billing: config.BillingConfig{
+			Provider:               "fawry",
+			MerchantCode:           "test_merchant",
+			SecureKey:              "test_secure_key",
+			BaseURL:                "https://atfawry.fawrystaging.com",
+			WebhookSecret:          "test_webhook_secret",
+			SuccessReturnURL:       "http://localhost:3000/billing/success",
+			CancelReturnURL:        "http://localhost:3000/billing/cancel",
+			WebhookURL:             "http://localhost:8080/api/v1/billing/webhook",
+			PlanPrices:             map[string]float64{"pro": 9.99, "vip": 19.99},
+			ChargeExpiryMinutes:    30,
+			DunningGraceDays:       3,
+			DunningMaxRetries:      3,
+			DunningRetryIntervalHr: 24,
+		},
 	}
 
 	logger := zerolog.New(zerolog.NewConsoleWriter()).With().Timestamp().Logger()

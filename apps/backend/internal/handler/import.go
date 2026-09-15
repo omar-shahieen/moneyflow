@@ -1,13 +1,14 @@
 package handler
 
 import (
-	"encoding/csv"
 	"encoding/json"
 	"net/http"
-	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/omar-shahieen/moneyflow/internal/model"
 	"github.com/omar-shahieen/moneyflow/internal/model/imports"
+	"github.com/omar-shahieen/moneyflow/internal/ports"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 	"github.com/omar-shahieen/moneyflow/internal/service"
 )
@@ -15,84 +16,121 @@ import (
 type ImportHandler struct {
 	Handler
 	service *service.ImportService
+	storage ports.Storage
 }
 
-func NewImportHandler(s *server.Server, svc *service.ImportService) *ImportHandler {
+func NewImportHandler(s *server.Server, svc *service.ImportService, storage ports.Storage) *ImportHandler {
 	return &ImportHandler{
 		Handler: NewHandler(s),
 		service: svc,
+		storage: storage,
 	}
 }
 
 func (h *ImportHandler) Create(c *gin.Context) {
 	Handle(
 		h.Handler,
-		func(c *gin.Context, req *imports.ImportCreateRequest) (*imports.ImportResponse, error) {
+		func(c *gin.Context, req *imports.ImportCreateRequest) (*imports.ImportCreateResponse, error) {
 			userID := GetUserID(c)
 
-			file, err := c.FormFile("file")
-			if err != nil {
-				return nil, ErrInvalidID
-			}
-
-			f, err := file.Open()
-			if err != nil {
-				return nil, err
-			}
-			defer f.Close()
-
-			reader := csv.NewReader(f)
-			records, err := reader.ReadAll()
+			imp, err := h.service.CreateImport(c.Request.Context(), userID, req.TotalRows)
 			if err != nil {
 				return nil, err
 			}
 
-			if len(records) < 2 {
-				return nil, ErrInvalidID
+			presignExpiry := 15 * time.Minute
+			if h.server.Config.Storage.R2.PresignExpiry > 0 {
+				presignExpiry = time.Duration(h.server.Config.Storage.R2.PresignExpiry) * time.Minute
 			}
 
-			totalRows := len(records) - 1
-
-			imp, err := h.service.CreateImport(c.Request.Context(), userID, totalRows)
+			uploadURL, err := h.storage.GenerateUploadURL(imp.StorageKey, "text/csv", presignExpiry)
 			if err != nil {
 				return nil, err
 			}
 
-			go func() {
-				var rows []service.CSVRow
-				for _, record := range records[1:] {
-					if len(record) < 4 {
-						continue
-					}
-
-					amount, _ := strconv.ParseInt(record[1], 10, 64)
-
-					rows = append(rows, service.CSVRow{
-						CategoryName: record[0],
-						Amount:       amount,
-						Currency:     record[2],
-						Note:         record[3],
-						Date: func() string {
-							if len(record) > 4 {
-								return record[4]
-							}
-							return ""
-						}(),
-					})
-				}
-				_ = h.service.ProcessImport(c.Request.Context(), imp.ID, userID, rows)
-			}()
-
-			return &imports.ImportResponse{
-				ID:          imp.ID.String(),
-				Status:      string(imp.Status),
-				TotalRows:   imp.TotalRows,
-				SuccessRows: imp.SuccessRows,
-				CreatedAt:   imp.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			return &imports.ImportCreateResponse{
+				ImportID:  imp.ID.String(),
+				UploadURL: uploadURL,
+				ExpiresAt: time.Now().Add(presignExpiry),
 			}, nil
 		},
 		http.StatusAccepted,
 		&imports.ImportCreateRequest{},
+	)(c)
+}
+
+func (h *ImportHandler) ConfirmUpload(c *gin.Context) {
+	Handle(
+		h.Handler,
+		func(c *gin.Context, req *imports.GetImportRequest) (*imports.ImportResponse, error) {
+			userID := GetUserID(c)
+
+			imp, err := h.service.ConfirmUpload(c.Request.Context(), req.ID, userID)
+			if err != nil {
+				return nil, err
+			}
+
+			var failedRows []imports.ImportRowError
+			_ = json.Unmarshal(imp.FailedRows, &failedRows)
+			if failedRows == nil {
+				failedRows = []imports.ImportRowError{}
+			}
+
+			return &imports.ImportResponse{
+				ID:             imp.ID.String(),
+				Status:         string(imp.Status),
+				TotalRows:      imp.TotalRows,
+				SuccessRows:    imp.SuccessRows,
+				FailedRows:     failedRows,
+				CreatedAt:      imp.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				StorageKey:     imp.StorageKey,
+				ChecksumSHA256: imp.ChecksumSHA256,
+			}, nil
+		},
+		http.StatusOK,
+		&imports.GetImportRequest{},
+	)(c)
+}
+
+func (h *ImportHandler) List(c *gin.Context) {
+	Handle(
+		h.Handler,
+		func(c *gin.Context, req *imports.ListImportsRequest) (*model.PaginatedResponse[imports.ImportResponse], error) {
+			userID := GetUserID(c)
+			result, err := h.service.GetImports(c.Request.Context(), userID, req)
+			if err != nil {
+				return nil, err
+			}
+
+			responses := make([]imports.ImportResponse, len(result.Data))
+			for i, imp := range result.Data {
+				var failedRows []imports.ImportRowError
+				_ = json.Unmarshal(imp.FailedRows, &failedRows)
+				if failedRows == nil {
+					failedRows = []imports.ImportRowError{}
+				}
+				responses[i] = imports.ImportResponse{
+					ID:             imp.ID.String(),
+					Status:         string(imp.Status),
+					TotalRows:      imp.TotalRows,
+					SuccessRows:    imp.SuccessRows,
+					FailedRows:     failedRows,
+					CreatedAt:      imp.CreatedAt.Format("2006-01-02T15:04:05Z"),
+					StorageKey:     imp.StorageKey,
+					ChecksumSHA256: imp.ChecksumSHA256,
+				}
+			}
+
+			return &model.PaginatedResponse[imports.ImportResponse]{
+				Data:       responses,
+				Page:       result.Page,
+				Limit:      result.Limit,
+				Total:      result.Total,
+				TotalPages: result.TotalPages,
+			}, nil
+		},
+		http.StatusOK,
+		&imports.ListImportsRequest{},
 	)(c)
 }
 
@@ -114,12 +152,14 @@ func (h *ImportHandler) GetByID(c *gin.Context) {
 			}
 
 			return &imports.ImportResponse{
-				ID:          imp.ID.String(),
-				Status:      string(imp.Status),
-				TotalRows:   imp.TotalRows,
-				SuccessRows: imp.SuccessRows,
-				FailedRows:  failedRows,
-				CreatedAt:   imp.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				ID:             imp.ID.String(),
+				Status:         string(imp.Status),
+				TotalRows:      imp.TotalRows,
+				SuccessRows:    imp.SuccessRows,
+				FailedRows:     failedRows,
+				CreatedAt:      imp.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				StorageKey:     imp.StorageKey,
+				ChecksumSHA256: imp.ChecksumSHA256,
 			}, nil
 		},
 		http.StatusOK,

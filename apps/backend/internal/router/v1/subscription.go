@@ -9,5 +9,8 @@ func registerSubscriptionRoutes(r *gin.RouterGroup, h *handler.SubscriptionHandl
 	subscription := r.Group("/subscription")
 	{
 		subscription.GET("", h.Get)
+		subscription.POST("/upgrade", h.Upgrade)
+		subscription.POST("/cancel", h.Cancel)
+		subscription.GET("/entitlements", h.Entitlements)
 	}
 }
