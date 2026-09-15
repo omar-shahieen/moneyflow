@@ -39,7 +39,7 @@ export function useImports() {
     queryKey: queryKeys.imports.lists(),
     queryFn: async () => {
       const response = await apiClient.get("/imports");
-      return response.data as Import[];
+      return (response.data as { data: Import[] }).data;
     },
   });
 }
