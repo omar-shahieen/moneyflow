@@ -8,7 +8,9 @@ import (
 func registerImportRoutes(r *gin.RouterGroup, h *handler.ImportHandler) {
 	imports := r.Group("/imports")
 	{
+		imports.GET("", h.List)
 		imports.POST("", h.Create)
 		imports.GET("/:id", h.GetByID)
+		imports.POST("/:id/confirm", h.ConfirmUpload)
 	}
 }

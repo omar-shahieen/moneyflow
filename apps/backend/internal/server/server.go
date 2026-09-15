@@ -51,14 +51,10 @@ func New(cfg *config.Config, logger *zerolog.Logger, loggerService *loggerPkg.Lo
 		// Don't fail startup if Redis is unavailable
 	}
 
-	// job service
+	// job service — handlers and start are deferred to main.go
+	// after services are initialized, so the import handler can
+	// access the ImportService.
 	jobService := job.NewJobService(logger, cfg)
-	jobService.InitHandlers(cfg, logger)
-
-	// Start job server
-	if err := jobService.Start(); err != nil {
-		return nil, err
-	}
 
 	server := &Server{
 		Config:        cfg,
