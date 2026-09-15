@@ -3,7 +3,7 @@ import { API_URL } from "@/config/env";
 import type { ApiError, NormalizedError } from "./errors";
 
 export const apiClient = axios.create({
-  baseURL: `${API_URL}/api`,
+  baseURL: `${API_URL}/api/v1`,
   headers: {
     "Content-Type": "application/json",
   },

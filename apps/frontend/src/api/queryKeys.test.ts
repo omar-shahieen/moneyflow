@@ -52,6 +52,14 @@ describe("queryKeys", () => {
     });
   });
 
+  describe("user", () => {
+    it("returns correct keys", () => {
+      expect(queryKeys.user.all).toEqual(["user"]);
+      expect(queryKeys.user.detail()).toEqual(["user", "detail"]);
+      expect(queryKeys.user.notifications()).toEqual(["user", "notifications"]);
+    });
+  });
+
   describe("subscription", () => {
     it("returns correct keys", () => {
       expect(queryKeys.subscription.all).toEqual(["subscription"]);
@@ -77,6 +85,7 @@ describe("queryKeys", () => {
   describe("imports", () => {
     it("returns correct keys", () => {
       expect(queryKeys.imports.all).toEqual(["imports"]);
+      expect(queryKeys.imports.lists()).toEqual(["imports", "list"]);
       expect(queryKeys.imports.detail("123")).toEqual([
         "imports",
         "detail",

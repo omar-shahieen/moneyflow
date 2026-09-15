@@ -29,6 +29,11 @@ export const queryKeys = {
     details: () => [...queryKeys.budgets.all, "detail"] as const,
     detail: (id: string) => [...queryKeys.budgets.details(), id] as const,
   },
+  user: {
+    all: ["user"] as const,
+    detail: () => [...queryKeys.user.all, "detail"] as const,
+    notifications: () => [...queryKeys.user.all, "notifications"] as const,
+  },
   subscription: {
     all: ["subscription"] as const,
     current: () => [...queryKeys.subscription.all, "current"] as const,
@@ -43,6 +48,9 @@ export const queryKeys = {
   },
   imports: {
     all: ["imports"] as const,
+    lists: () => [...queryKeys.imports.all, "list"] as const,
+    list: (filters?: Record<string, unknown>) =>
+      [...queryKeys.imports.lists(), filters] as const,
     details: () => [...queryKeys.imports.all, "detail"] as const,
     detail: (id: string) => [...queryKeys.imports.details(), id] as const,
   },

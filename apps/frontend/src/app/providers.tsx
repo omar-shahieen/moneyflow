@@ -20,7 +20,7 @@ function AuthSync() {
   const { getToken, signOut } = useAuth();
 
   useEffect(() => {
-    setTokenGetter(() => getToken({ template: "custom" }));
+    setTokenGetter(() => getToken({ template: "test" }));
     setOnUnauthorized(() => {
       signOut();
     });

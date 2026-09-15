@@ -12,7 +12,7 @@ export type TApiClient = ReturnType<typeof useApiClient>;
 export const useApiClient = ({ isBlob = false }: { isBlob?: boolean } = {}) => {
   const { getToken } = useAuth();
 
-  setTokenGetter(() => getToken({ template: "custom" }));
+  setTokenGetter(() => getToken({ template: "test" }));
 
   return initClient(apiContract, {
     baseUrl: "",
@@ -24,7 +24,7 @@ export const useApiClient = ({ isBlob = false }: { isBlob?: boolean } = {}) => {
         try {
           const result = await apiClient.request({
             method: method as string,
-            url: `/api${path}`,
+            url: path,
             headers: {
               ...headers,
             },
