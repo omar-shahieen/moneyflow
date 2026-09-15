@@ -1,6 +1,8 @@
 package category
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/omar-shahieen/moneyflow/internal/model"
@@ -30,6 +32,11 @@ func (r CreateCategoryRequest) Validate() error {
 	return validate.Struct(r)
 }
 
+func (r *CreateCategoryRequest) Normalize() {
+	r.Name = strings.TrimSpace(r.Name)
+	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
+}
+
 type UpdateCategoryRequest struct {
 	ID   uuid.UUID `uri:"id" binding:"required,uuid"`
 	Name string    `json:"name" binding:"required,min=1,max=100"`
@@ -38,6 +45,11 @@ type UpdateCategoryRequest struct {
 
 func (r UpdateCategoryRequest) Validate() error {
 	return validate.Struct(r)
+}
+
+func (r *UpdateCategoryRequest) Normalize() {
+	r.Name = strings.TrimSpace(r.Name)
+	r.Type = strings.ToLower(strings.TrimSpace(r.Type))
 }
 
 type DeleteCategoryRequest struct {

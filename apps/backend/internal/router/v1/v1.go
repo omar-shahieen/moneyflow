@@ -10,7 +10,9 @@ func RegisterV1Routes(r *gin.RouterGroup, h *handler.Handlers) {
 	registerTransactionRoutes(r, h.Transaction, h.Receipt)
 	registerBudgetRoutes(r, h.Budget)
 	registerSubscriptionRoutes(r, h.Subscription)
+	registerBillingRoutes(r, h.Billing)
 	registerRecurringRoutes(r, h.Recurring)
 	registerImportRoutes(r, h.Import)
 	registerReportRoutes(r, h.Report)
+	registerUserRoutes(r, h.User)
 }

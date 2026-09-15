@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"github.com/omar-shahieen/moneyflow/internal/model/transaction"
 	"github.com/omar-shahieen/moneyflow/internal/ports"
 	"github.com/omar-shahieen/moneyflow/internal/server"
 )
@@ -29,18 +29,10 @@ type PresignedUploadResponse struct {
 	ExpiresAt  time.Time `json:"expires_at"`
 }
 
-type GetReceiptUploadURLRequest struct {
-	ID uuid.UUID `uri:"id" binding:"required,uuid"`
-}
-
-func (r GetReceiptUploadURLRequest) Validate() error {
-	return nil
-}
-
 func (h *ReceiptHandler) GetUploadURL(c *gin.Context) {
 	Handle(
 		h.Handler,
-		func(c *gin.Context, req *GetReceiptUploadURLRequest) (*PresignedUploadResponse, error) {
+		func(c *gin.Context, req *transaction.GetReceiptUploadURLRequest) (*PresignedUploadResponse, error) {
 			userID := GetUserID(c)
 
 			storageKey := fmt.Sprintf("receipts/%s/%s.jpg", userID, req.ID.String())
@@ -61,6 +53,6 @@ func (h *ReceiptHandler) GetUploadURL(c *gin.Context) {
 			}, nil
 		},
 		http.StatusOK,
-		&GetReceiptUploadURLRequest{},
+		&transaction.GetReceiptUploadURLRequest{},
 	)(c)
 }

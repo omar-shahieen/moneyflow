@@ -24,11 +24,11 @@ func NewGlobalMiddlewares(s *server.Server) *GlobalMiddlewares {
 	}
 }
 
-// CORS mirrors the Echo CORSWithConfig middleware, allowing the origins
-// configured in server.Config.Server.CORSAllowedOrigins.
+// CORS mirrors
 func (global *GlobalMiddlewares) CORS() gin.HandlerFunc {
 	cfg := cors.DefaultConfig()
 	cfg.AllowOrigins = global.server.Config.Server.CORSAllowedOrigins
+	cfg.AllowHeaders = append(cfg.AllowHeaders, "Authorization")
 	return cors.New(cfg)
 }
 
@@ -110,7 +110,6 @@ func (global *GlobalMiddlewares) Secure() gin.HandlerFunc {
 	}
 }
 
-// ErrorHandler is the Gin equivalent of Echo's GlobalErrorHandler /
 // HTTPErrorHandler. Handlers that need to fail should call c.Error(err)
 // (and return); this middleware picks that error up after c.Next() and
 // writes the JSON error response.
@@ -126,14 +125,12 @@ func (global *GlobalMiddlewares) ErrorHandler() gin.HandlerFunc {
 	}
 }
 
-// NoRouteHandler mirrors Echo's automatic conversion of a 404 into
-// errs.NewNotFoundError. Register with router.NoRoute(mw.NoRouteHandler).
+// handle not found pages
 func (global *GlobalMiddlewares) NoRouteHandler(c *gin.Context) {
 	global.handleError(errs.NewNotFoundError("Route not found", false, nil), c)
 }
 
 // handleError contains the shared conversion-and-response logic used by
-// both ErrorHandler and Recover, equivalent to Echo's GlobalErrorHandler.
 func (global *GlobalMiddlewares) handleError(err error, c *gin.Context) {
 	originalErr := err
 

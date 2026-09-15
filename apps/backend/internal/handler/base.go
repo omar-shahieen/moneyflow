@@ -190,6 +190,9 @@ func handleRequest[Req validation.Validatable](
 		writeError(c, bindErr)
 		return
 	}
+	if normalizable, ok := any(req).(validation.Normalizable); ok {
+		normalizable.Normalize()
+	}
 	if msg, fieldErrors := validation.ValidateStruct(req); fieldErrors != nil {
 		validationDuration := time.Since(validationStart)
 		ve := &errs.HTTPError{

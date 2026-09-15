@@ -10,7 +10,6 @@ export const ZBudget = z.object({
   id: z.string().uuid(),
   category_id: z.string().uuid(),
   monthly_limit_minor: z.number(),
-  currency: z.string(),
   created_at: z.string().datetime(),
 });
 
@@ -27,13 +26,11 @@ export const ZBudgetResponse = ZBudgetWithMembers.extend({
 export const ZCreateBudgetRequest = z.object({
   category_id: z.string().uuid(),
   monthly_limit_minor: z.number().positive(),
-  currency: z.string().length(3).optional(),
 });
 
 export const ZUpdateBudgetRequest = z.object({
   category_id: z.string().uuid(),
   monthly_limit_minor: z.number().positive(),
-  currency: z.string().length(3).optional(),
 });
 
 export const ZAddMemberRequest = z.object({

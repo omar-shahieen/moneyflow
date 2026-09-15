@@ -20,7 +20,7 @@ func NewUserRepository(server *server.Server) *UserRepo {
 func (r *UserRepo) GetByID(ctx context.Context, id string) (*user.UserAccount, error) {
 	stmt := `
 		SELECT
-			id, email, display_name, avatar_url, default_currency, timezone, created_at, updated_at
+			id, email, display_name, avatar_url, timezone, created_at, updated_at
 		FROM
 			user_accounts
 		WHERE
@@ -45,9 +45,9 @@ func (r *UserRepo) GetByID(ctx context.Context, id string) (*user.UserAccount, e
 func (r *UserRepo) Create(ctx context.Context, u *user.UserAccount) error {
 	stmt := `
 		INSERT INTO
-			user_accounts (id, email, display_name, avatar_url, default_currency, timezone)
+			user_accounts (id, email, display_name, avatar_url, timezone)
 		VALUES
-			(@id, @email, @display_name, @avatar_url, @default_currency, @timezone)
+			(@id, @email, @display_name, @avatar_url, @timezone)
 		ON CONFLICT (id) DO UPDATE SET
 			email = EXCLUDED.email,
 			display_name = EXCLUDED.display_name,
@@ -56,12 +56,11 @@ func (r *UserRepo) Create(ctx context.Context, u *user.UserAccount) error {
 	`
 
 	_, err := r.server.DB.Pool.Exec(ctx, stmt, pgx.NamedArgs{
-		"id":               u.ID,
-		"email":            u.Email,
-		"display_name":     u.DisplayName,
-		"avatar_url":       u.AvatarURL,
-		"default_currency": u.DefaultCurrency,
-		"timezone":         u.Timezone,
+		"id":           u.ID,
+		"email":        u.Email,
+		"display_name": u.DisplayName,
+		"avatar_url":   u.AvatarURL,
+		"timezone":     u.Timezone,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute create user query for user_id=%s: %w", u.ID, err)
@@ -74,17 +73,16 @@ func (r *UserRepo) Update(ctx context.Context, u *user.UserAccount) error {
 	stmt := `
 		UPDATE user_accounts
 		SET email = @email, display_name = @display_name, avatar_url = @avatar_url,
-		    default_currency = @default_currency, timezone = @timezone, updated_at = NOW()
+		    timezone = @timezone, updated_at = NOW()
 		WHERE id = @id
 	`
 
 	tag, err := r.server.DB.Pool.Exec(ctx, stmt, pgx.NamedArgs{
-		"id":               u.ID,
-		"email":            u.Email,
-		"display_name":     u.DisplayName,
-		"avatar_url":       u.AvatarURL,
-		"default_currency": u.DefaultCurrency,
-		"timezone":         u.Timezone,
+		"id":           u.ID,
+		"email":        u.Email,
+		"display_name": u.DisplayName,
+		"avatar_url":   u.AvatarURL,
+		"timezone":     u.Timezone,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to execute update user query for user_id=%s: %w", u.ID, err)

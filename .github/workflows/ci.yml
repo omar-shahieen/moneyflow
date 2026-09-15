@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.27.0"
+  GO_VERSION: "1.27.1"
   BUN_VERSION: "1.2"
   REGISTRY: docker.io
   IMAGE_NAME: omarmohamed04/moneyflow
@@ -35,7 +35,7 @@ jobs:
           filters: |
             backend:
               - 'apps/backend/**'
-              - 'Dockerfile'
+              - 'apps/backend/Dockerfile'
               - 'go.*'
             frontend:
               - 'apps/frontend/**'
@@ -84,19 +84,21 @@ jobs:
           version: latest
           working-directory: apps/backend
 
-      # Start test dependencies
+      # Start test dependencies (run from repo root where docker-compose.test.yml lives)
       - name: Start test infrastructure
+        working-directory: ${{ github.workspace }}
         run: |
-          docker compose -f ../../docker-compose.test.yml up -d
-          # Wait for health checks
-          docker compose -f ../../docker-compose.test.yml ps
-        working-directory: apps/backend
+          docker compose -f docker-compose.test.yml up -d
+          docker compose -f docker-compose.test.yml ps
 
       - name: Wait for Postgres and Redis
+        working-directory: ${{ github.workspace }}
         run: |
           for i in $(seq 1 30); do
-            if docker compose -f docker-compose.test.yml ps | grep -q "healthy"; then
-              echo "Dependencies healthy"
+            HEALTHY=$(docker compose -f docker-compose.test.yml ps --format json \
+              | grep -c '"Health":"healthy"' || true)
+            if [ "$HEALTHY" -ge 2 ]; then
+              echo "Dependencies healthy ($HEALTHY/2 services)"
               break
             fi
             echo "Waiting for dependencies... ($i/30)"
@@ -116,10 +118,12 @@ jobs:
 
       - name: Collect test infrastructure logs on failure
         if: failure()
+        working-directory: ${{ github.workspace }}
         run: docker compose -f docker-compose.test.yml logs
 
       - name: Tear down test infrastructure
         if: always()
+        working-directory: ${{ github.workspace }}
         run: docker compose -f docker-compose.test.yml down -v
 
   # ──────────────────────────────────────────────────────────
@@ -167,7 +171,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Dockerfile
+          file: apps/backend/Dockerfile
           push: false
           tags: ${{ env.IMAGE_NAME }}:api-ci-${{ github.sha }}
           cache-from: type=gha
@@ -211,6 +215,20 @@ jobs:
             -e MONEYFLOW_REDIS.ADDRESS=localhost:6379 \
             -e MONEYFLOW_AUTH.SECRET_KEY=ci-test-key \
             -e MONEYFLOW_INTEGRATION.RESEND_API_KEY=re_test \
+            -e MONEYFLOW_BILLING.PROVIDER=fawry \
+            -e MONEYFLOW_BILLING.MERCHANT_CODE=ci-merchant \
+            -e MONEYFLOW_BILLING.SECURE_KEY=ci-secure-key \
+            -e MONEYFLOW_BILLING.BASE_URL=https://atfawry.fawrystaging.com \
+            -e MONEYFLOW_BILLING.WEBHOOK_SECRET=ci-webhook-secret \
+            -e MONEYFLOW_BILLING.SUCCESS_RETURN_URL=http://localhost:3000/billing/success \
+            -e MONEYFLOW_BILLING.CANCEL_RETURN_URL=http://localhost:3000/billing/cancel \
+            -e MONEYFLOW_BILLING.WEBHOOK_URL=http://localhost:8080/api/v1/billing/webhook \
+            -e MONEYFLOW_BILLING.PLAN_PRICES.PRO=9.99 \
+            -e MONEYFLOW_BILLING.PLAN_PRICES.VIP=19.99 \
+            -e MONEYFLOW_BILLING.CHARGE_EXPIRY_MINUTES=30 \
+            -e MONEYFLOW_BILLING.DUNNING_GRACE_DAYS=3 \
+            -e MONEYFLOW_BILLING.DUNNING_MAX_RETRIES=3 \
+            -e MONEYFLOW_BILLING.DUNNING_RETRY_INTERVAL_HOURS=24 \
             ${{ env.IMAGE_NAME }}:api-ci-${{ github.sha }} || true
           sleep 5
           docker logs api-smoke || true

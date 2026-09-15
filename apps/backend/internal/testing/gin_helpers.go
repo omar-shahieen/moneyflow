@@ -39,7 +39,7 @@ func SetupTestGinServer(t *testing.T) (*TestGinServer, func()) {
 	}
 
 	repos := repository.NewRepositories(srv)
-	services, _ := service.NewServices(srv, repos)
+	services, _ := service.NewServices(srv, repos, srv.Logger)
 	handlers := handler.NewHandlers(srv, services)
 
 	router := gin.New()

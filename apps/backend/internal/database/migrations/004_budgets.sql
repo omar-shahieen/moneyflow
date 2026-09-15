@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS budgets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     monthly_limit_minor BIGINT NOT NULL,
-    currency CHAR(3) NOT NULL DEFAULT 'USD',
+    currency CHAR(3) NOT NULL DEFAULT 'EGP',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

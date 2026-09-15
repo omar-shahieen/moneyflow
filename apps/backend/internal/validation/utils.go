@@ -13,6 +13,12 @@ type Validatable interface {
 	Validate() error
 }
 
+// Normalizable is implemented by request DTOs that need to canonicalize input
+// before it is validated and passed to the application layer.
+type Normalizable interface {
+	Normalize()
+}
+
 type CustomValidationError struct {
 	Field   string
 	Message string

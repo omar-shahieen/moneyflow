@@ -6,6 +6,7 @@ namespace: moneyflow
 resources:
   - namespace.yaml
   - configmap.yaml
+  - secret-template.yaml
   - api-deployment.yaml
   - api-service.yaml
   - worker-deployment.yaml

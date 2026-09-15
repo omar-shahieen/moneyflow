@@ -11,7 +11,9 @@ type Repositories struct {
 	Report       *ReportRepo
 	Import       *ImportRepo
 	Subscription *SubscriptionRepo
+	BillingEvent *BillingEventRepo
 	User         *UserRepo
+	Notification *NotificationRepo
 }
 
 func NewRepositories(s *server.Server) *Repositories {
@@ -24,6 +26,8 @@ func NewRepositories(s *server.Server) *Repositories {
 		Report:       NewReportRepository(s),
 		Import:       NewImportRepository(s),
 		Subscription: NewSubscriptionRepository(s),
+		BillingEvent: NewBillingEventRepository(s),
 		User:         NewUserRepository(s),
+		Notification: NewNotificationRepository(s),
 	}
 }

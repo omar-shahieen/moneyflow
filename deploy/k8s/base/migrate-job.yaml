@@ -1,5 +1,5 @@
 apiVersion: batch/v1
-kind: Job
+kind: CronJob
 metadata:
   name: moneyflow-migrate
   namespace: moneyflow
@@ -7,46 +7,54 @@ metadata:
     app.kubernetes.io/name: moneyflow
     app.kubernetes.io/component: migrate
 spec:
-  # Hard deadline: fail if migration takes more than 10 minutes
-  activeDeadlineSeconds: 600
-  # Only one retry — if migration fails, human review is required
-  backoffLimit: 1
-  # Clean up completed/failed jobs after 1 hour
-  ttlSecondsAfterFinished: 3600
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: moneyflow
-        app.kubernetes.io/component: migrate
+  # Suspended by default — the deploy pipeline spawns ad-hoc Jobs via:
+  #   kubectl create job migrate-<sha> --from=cronjob/moneyflow-migrate
+  # This CronJob spec acts as a template; the schedule below never fires.
+  schedule: "0 0 31 2 *"   # Feb 31 — unreachable date, effectively never
+  suspend: true
+  concurrencyPolicy: Forbid
+  jobTemplate:
     spec:
-      restartPolicy: Never
-
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 65532
-        runAsGroup: 65532
-
-      containers:
-        - name: migrate
-          image: moneyflow-api:latest
-          command: ["/moneyflow", "migrate"]
-
-          envFrom:
-            - configMapRef:
-                name: moneyflow-config
-            - secretRef:
-                name: moneyflow-secrets
-
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
+      # Hard deadline: fail if migration takes more than 10 minutes
+      activeDeadlineSeconds: 600
+      # Only one retry — if migration fails, human review is required
+      backoffLimit: 1
+      # Clean up completed/failed jobs after 1 hour
+      ttlSecondsAfterFinished: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: moneyflow
+            app.kubernetes.io/component: migrate
+        spec:
+          restartPolicy: Never
 
           securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+
+          containers:
+            - name: migrate
+              image: moneyflow-api:latest
+              command: ["/moneyflow-migrate"]
+
+              envFrom:
+                - configMapRef:
+                    name: moneyflow-config
+                - secretRef:
+                    name: moneyflow-secrets
+
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 200m
+                  memory: 128Mi
+
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]

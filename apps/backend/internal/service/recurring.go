@@ -66,17 +66,11 @@ func (s *RecurringRuleService) CreateRecurringRule(ctx context.Context, userID s
 		return nil, errs.NewNotFoundError("resource not found", false, nil)
 	}
 
-	currency := payload.Currency
-	if currency == "" {
-		currency = "USD"
-	}
-
 	rule := &recurring.RecurringRule{
 		ID:          uuid.New(),
 		UserID:      userID,
 		CategoryID:  categoryID,
 		AmountMinor: payload.AmountMinor,
-		Currency:    currency,
 		Frequency:   recurring.RecurringFrequency(payload.Frequency),
 		NextRunDate: nextRunDate,
 	}
@@ -120,7 +114,6 @@ func (s *RecurringRuleService) UpdateRecurringRule(ctx context.Context, userID s
 
 	rule.CategoryID = categoryID
 	rule.AmountMinor = payload.AmountMinor
-	rule.Currency = payload.Currency
 	rule.Frequency = recurring.RecurringFrequency(payload.Frequency)
 	rule.NextRunDate = nextRunDate
 
@@ -192,7 +185,6 @@ func (s *RecurringRuleService) processRule(ctx context.Context, rule *recurring.
 		UserID:      rule.UserID,
 		CategoryID:  rule.CategoryID,
 		AmountMinor: rule.AmountMinor,
-		Currency:    rule.Currency,
 		Note:        "Generated from recurring rule",
 		OccurredAt:  occurrenceDate,
 	}

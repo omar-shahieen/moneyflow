@@ -6,23 +6,34 @@ metadata:
   labels:
     app.kubernetes.io/name: moneyflow
 data:
-  # Primary
+  # ── Primary ──────────────────────────────────────────────
   MONEYFLOW_PRIMARY.ENV: "production"
 
-  # Server
+  # ── Server ───────────────────────────────────────────────
   MONEYFLOW_SERVER.PORT: "8080"
   MONEYFLOW_SERVER.READ_TIMEOUT: "30"
   MONEYFLOW_SERVER.WRITE_TIMEOUT: "30"
   MONEYFLOW_SERVER.IDLE_TIMEOUT: "60"
+  # CORS origins are overridden per environment in overlays
+  MONEYFLOW_SERVER.CORS_ALLOWED_ORIGINS: "https://moneyflow.example.com"
 
-  # Database pool
+  # ── Database connection ───────────────────────────────────
+  # Host and port are overridden in environment overlays
+  MONEYFLOW_DATABASE.HOST: "postgres.moneyflow.svc.cluster.local"
+  MONEYFLOW_DATABASE.PORT: "5432"
+  MONEYFLOW_DATABASE.NAME: "moneyflow"
+  MONEYFLOW_DATABASE.USER: "moneyflow"
   MONEYFLOW_DATABASE.SSL_MODE: "require"
   MONEYFLOW_DATABASE.MAX_OPEN_CONNS: "25"
   MONEYFLOW_DATABASE.MAX_IDLE_CONNS: "10"
   MONEYFLOW_DATABASE.CONN_MAX_LIFETIME: "300"
   MONEYFLOW_DATABASE.CONN_MAX_IDLE_TIME: "60"
 
-  # Observability
+  # ── Redis ─────────────────────────────────────────────────
+  # Address is overridden in environment overlays
+  MONEYFLOW_REDIS.ADDRESS: "redis.moneyflow.svc.cluster.local:6379"
+
+  # ── Observability ─────────────────────────────────────────
   MONEYFLOW_OBSERVABILITY.SERVICE_NAME: "moneyflow"
   MONEYFLOW_OBSERVABILITY.LOGGING.LEVEL: "info"
   MONEYFLOW_OBSERVABILITY.LOGGING.FORMAT: "json"

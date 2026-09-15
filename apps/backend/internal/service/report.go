@@ -157,7 +157,7 @@ func generateCSV(transactions []transaction.Transaction) ([]byte, error) {
 			t.ID.String(),
 			t.CategoryID.String(),
 			fmt.Sprintf("%d", t.AmountMinor),
-			t.Currency,
+			"EGP",
 			t.Note,
 			t.OccurredAt.Format("2006-01-02"),
 		}

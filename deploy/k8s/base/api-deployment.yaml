@@ -39,7 +39,7 @@ spec:
         - name: api
           # Image is patched by kustomize overlays with the immutable digest
           image: moneyflow-api:latest
-          command: ["/moneyflow", "api"]
+          command: ["/moneyflow-api"]
           ports:
             - name: http
               containerPort: 8080

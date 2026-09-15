@@ -34,8 +34,8 @@ spec:
 
       containers:
         - name: worker
-          image: moneyflow-api:latest   # same image, different CMD
-          command: ["/moneyflow", "worker"]
+          image: moneyflow-api:latest   # same image as API
+          command: ["/moneyflow-api"]   # worker (Asynq) is embedded in the API binary
 
           envFrom:
             - configMapRef:
@@ -51,14 +51,9 @@ spec:
               cpu: 1000m     # workers can spike CPU during report/CSV generation
               memory: 1Gi
 
-          # Workers don't expose HTTP — use exec probe to check process health
-          livenessProbe:
-            exec:
-              command: ["/bin/sh", "-c", "pgrep moneyflow > /dev/null"]
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            timeoutSeconds: 5
-            failureThreshold: 3
+          # The Asynq worker is embedded in the API binary.
+          # No HTTP listener — rely on Kubernetes restart policy (restartPolicy: Always)
+          # for liveness. distroless has no shell so exec probes are not possible.
 
           securityContext:
             allowPrivilegeEscalation: false

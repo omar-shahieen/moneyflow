@@ -38,6 +38,8 @@ patches:
         replicas: 1
 
   # ── ConfigMap overrides for staging ──────────────────────────
+  # Override DB host, Redis address, CORS, and env-specific settings.
+  # MONEYFLOW_DATABASE.PASSWORD and secret keys come from moneyflow-secrets.
   - patch: |-
       apiVersion: v1
       kind: ConfigMap
@@ -48,6 +50,19 @@ patches:
         MONEYFLOW_PRIMARY.ENV: "staging"
         MONEYFLOW_OBSERVABILITY.ENVIRONMENT: "staging"
         MONEYFLOW_SERVER.CORS_ALLOWED_ORIGINS: "https://staging.moneyflow.example.com"
+        # ── Database (override to your managed staging DB endpoint) ──
+        MONEYFLOW_DATABASE.HOST: "staging-db.moneyflow.example.com"
+        MONEYFLOW_DATABASE.PORT: "5432"
+        MONEYFLOW_DATABASE.NAME: "moneyflow_staging"
+        MONEYFLOW_DATABASE.USER: "moneyflow_staging"
+        MONEYFLOW_DATABASE.SSL_MODE: "require"
+        MONEYFLOW_DATABASE.MAX_OPEN_CONNS: "10"
+        MONEYFLOW_DATABASE.MAX_IDLE_CONNS: "5"
+        # ── Redis (override to your managed staging Redis endpoint) ──
+        MONEYFLOW_REDIS.ADDRESS: "staging-redis.moneyflow.example.com:6379"
+        # ── Observability ─────────────────────────────────────────────
+        MONEYFLOW_OBSERVABILITY.LOGGING.LEVEL: "debug"
+        MONEYFLOW_OBSERVABILITY.LOGGING.FORMAT: "json"
 
   # ── Ingress host override ─────────────────────────────────────
   - patch: |-

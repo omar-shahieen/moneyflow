@@ -1,6 +1,8 @@
 package budget
 
 import (
+	"strings"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -22,6 +24,11 @@ type ListBudgetsRequest struct {
 	Search string `form:"search" binding:"omitempty"`
 }
 
+func (r *ListBudgetsRequest) Normalize() {
+	r.PaginationRequest.Normalize()
+	r.Search = strings.TrimSpace(r.Search)
+}
+
 func (r ListBudgetsRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
 	if r.Search == "" {
 		return ""
@@ -33,7 +40,6 @@ func (r ListBudgetsRequest) ApplyCustomFilters(args pgx.NamedArgs) string {
 type CreateBudgetRequest struct {
 	CategoryID        uuid.UUID `json:"category_id" binding:"required,uuid"`
 	MonthlyLimitMinor int64     `json:"monthly_limit_minor" binding:"required,gt=0"`
-	Currency          string    `json:"currency" binding:"omitempty,len=3"`
 }
 
 func (r CreateBudgetRequest) Validate() error {
@@ -44,7 +50,6 @@ type UpdateBudgetRequest struct {
 	ID                uuid.UUID `uri:"id" binding:"required,uuid"`
 	CategoryID        uuid.UUID `json:"category_id" binding:"required,uuid"`
 	MonthlyLimitMinor int64     `json:"monthly_limit_minor" binding:"required,gt=0"`
-	Currency          string    `json:"currency" binding:"omitempty,len=3"`
 }
 
 func (r UpdateBudgetRequest) Validate() error {
@@ -60,6 +65,8 @@ func (r AddMemberRequest) Validate() error {
 	return validate.Struct(r)
 }
 
+func (r *AddMemberRequest) Normalize() { r.UserID = strings.TrimSpace(r.UserID) }
+
 type RemoveMemberRequest struct {
 	ID     uuid.UUID `uri:"id" binding:"required,uuid"`
 	UserID string    `uri:"userId" binding:"required"`
@@ -68,6 +75,8 @@ type RemoveMemberRequest struct {
 func (r RemoveMemberRequest) Validate() error {
 	return validate.Struct(r)
 }
+
+func (r *RemoveMemberRequest) Normalize() { r.UserID = strings.TrimSpace(r.UserID) }
 
 type BudgetResponse struct {
 	BudgetWithMembers

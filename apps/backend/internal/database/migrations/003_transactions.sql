@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     user_id TEXT NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
     amount_minor BIGINT NOT NULL,
-    currency CHAR(3) NOT NULL DEFAULT 'USD',
+    currency CHAR(3) NOT NULL DEFAULT 'EGP',
     note TEXT NOT NULL DEFAULT '',
     receipt_key TEXT,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

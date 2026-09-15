@@ -58,17 +58,11 @@ func (s *TransactionService) CreateTransaction(ctx context.Context, userID strin
 		return nil, errs.NewBadRequestError("invalid occurred_at format", false, nil, nil, nil)
 	}
 
-	currency := payload.Currency
-	if currency == "" {
-		currency = "USD"
-	}
-
 	t := &transaction.Transaction{
 		ID:          uuid.New(),
 		UserID:      userID,
 		CategoryID:  categoryID,
 		AmountMinor: payload.AmountMinor,
-		Currency:    currency,
 		Note:        payload.Note,
 		ReceiptKey:  payload.ReceiptKey,
 		OccurredAt:  occurredAt,
@@ -107,7 +101,6 @@ func (s *TransactionService) UpdateTransaction(ctx context.Context, userID strin
 
 	t.CategoryID = categoryID
 	t.AmountMinor = payload.AmountMinor
-	t.Currency = payload.Currency
 	t.Note = payload.Note
 	t.ReceiptKey = payload.ReceiptKey
 	t.OccurredAt = occurredAt

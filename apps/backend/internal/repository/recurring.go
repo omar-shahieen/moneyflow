@@ -24,7 +24,7 @@ func NewRecurringRuleRepository(server *server.Server) *RecurringRuleRepo {
 func (r *RecurringRuleRepo) GetByID(ctx context.Context, id uuid.UUID, userID string) (*recurring.RecurringRule, error) {
 	stmt := `
 		SELECT
-			id, user_id, category_id, amount_minor, currency, frequency,
+			id, user_id, category_id, amount_minor, frequency,
 			next_run_date, last_generated_date, end_date
 		FROM
 			recurring_rules
@@ -53,7 +53,7 @@ func (r *RecurringRuleRepo) List(ctx context.Context, userID string, req *recurr
 	args := pgx.NamedArgs{"user_id": userID}
 	where := BuildFilterClause(req, args)
 
-	baseStmt := `SELECT id, user_id, category_id, amount_minor, currency, frequency, next_run_date, last_generated_date, end_date
+	baseStmt := `SELECT id, user_id, category_id, amount_minor, frequency, next_run_date, last_generated_date, end_date
 		FROM recurring_rules WHERE user_id = @user_id` + where
 	countStmt := `SELECT COUNT(*) FROM recurring_rules WHERE user_id = @user_id` + where
 
@@ -66,9 +66,9 @@ func (r *RecurringRuleRepo) List(ctx context.Context, userID string, req *recurr
 func (r *RecurringRuleRepo) Create(ctx context.Context, rule *recurring.RecurringRule) error {
 	stmt := `
 		INSERT INTO
-			recurring_rules (id, user_id, category_id, amount_minor, currency, frequency, next_run_date, end_date)
+			recurring_rules (id, user_id, category_id, amount_minor, frequency, next_run_date, end_date)
 		VALUES
-			(@id, @user_id, @category_id, @amount_minor, @currency, @frequency, @next_run_date, @end_date)
+			(@id, @user_id, @category_id, @amount_minor, @frequency, @next_run_date, @end_date)
 		RETURNING
 			last_generated_date
 	`
@@ -78,7 +78,6 @@ func (r *RecurringRuleRepo) Create(ctx context.Context, rule *recurring.Recurrin
 		"user_id":       rule.UserID,
 		"category_id":   rule.CategoryID,
 		"amount_minor":  rule.AmountMinor,
-		"currency":      rule.Currency,
 		"frequency":     rule.Frequency,
 		"next_run_date": rule.NextRunDate,
 		"end_date":      rule.EndDate,
@@ -93,7 +92,7 @@ func (r *RecurringRuleRepo) Create(ctx context.Context, rule *recurring.Recurrin
 func (r *RecurringRuleRepo) Update(ctx context.Context, rule *recurring.RecurringRule) error {
 	stmt := `
 		UPDATE recurring_rules
-		SET category_id = @category_id, amount_minor = @amount_minor, currency = @currency,
+		SET category_id = @category_id, amount_minor = @amount_minor,
 		    frequency = @frequency, next_run_date = @next_run_date,
 		    last_generated_date = @last_generated_date, end_date = @end_date
 		WHERE id = @id AND user_id = @user_id
@@ -104,7 +103,6 @@ func (r *RecurringRuleRepo) Update(ctx context.Context, rule *recurring.Recurrin
 		"user_id":             rule.UserID,
 		"category_id":         rule.CategoryID,
 		"amount_minor":        rule.AmountMinor,
-		"currency":            rule.Currency,
 		"frequency":           rule.Frequency,
 		"next_run_date":       rule.NextRunDate,
 		"last_generated_date": rule.LastGeneratedDate,
@@ -143,7 +141,7 @@ func (r *RecurringRuleRepo) Delete(ctx context.Context, id uuid.UUID, userID str
 func (r *RecurringRuleRepo) GetDueRules(ctx context.Context, before time.Time) ([]recurring.RecurringRule, error) {
 	stmt := `
 		SELECT
-			id, user_id, category_id, amount_minor, currency, frequency,
+			id, user_id, category_id, amount_minor, frequency,
 			next_run_date, last_generated_date, end_date
 		FROM
 			recurring_rules

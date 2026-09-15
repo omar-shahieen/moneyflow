@@ -1,10 +1,11 @@
 # ============================================================
 # MoneyFlow — Docker Compose (local development)
 # Usage:
-#   docker compose up -d                  # start all services
-#   docker compose --profile migrate up   # run DB migrations
-#   docker compose logs -f api            # tail API logs
-#   docker compose down -v                # destroy everything incl. volumes
+#   docker compose up -d                   # start all services
+#   docker compose --profile migrate up    # run DB migrations
+#   docker compose --profile worker up     # start background worker
+#   docker compose logs -f api             # tail API logs
+#   docker compose down -v                 # destroy everything incl. volumes
 # ============================================================
 
 services:
@@ -72,11 +73,51 @@ services:
       retries: 5
       start_period: 20s
 
+  # ── Asynq Background Worker ────────────────────────────────
+  worker:
+    profiles: ["worker"]
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["worker"]
+    restart: unless-stopped
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      MONEYFLOW_DATABASE.HOST: postgres
+      MONEYFLOW_DATABASE.PORT: "5432"
+      MONEYFLOW_REDIS.ADDRESS: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  # ── Database Migrations ────────────────────────────────────
+  migrate:
+    profiles: ["migrate"]
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    command: ["migrate"]
+    env_file:
+      - ./apps/backend/.env
+    environment:
+      MONEYFLOW_DATABASE.HOST: postgres
+      MONEYFLOW_DATABASE.PORT: "5432"
+      MONEYFLOW_REDIS.ADDRESS: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   # ── React / Vite frontend ──────────────────────────────────
   frontend:
     build:
-      context: ./apps/frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.frontend
     restart: unless-stopped
     env_file:
       - ./apps/frontend/.env
